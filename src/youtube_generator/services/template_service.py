@@ -35,6 +35,11 @@ class TemplateManager:
         ) if self._templates_dir.is_dir() else ()
         return templates
 
+    def directory_for(self, template_id: str | None = None) -> Path:
+        """解決済みテンプレートの素材ディレクトリを返す。"""
+        template = self.get(template_id)
+        return self._templates_dir / template.template_id
+
     @staticmethod
     def _load_directory(template_id: str, template_dir: Path) -> VideoTemplate:
         required_files = ("prompt.txt", "image_prompt.txt", "title_prompt.txt", "thumbnail_prompt.txt", "video.yaml")

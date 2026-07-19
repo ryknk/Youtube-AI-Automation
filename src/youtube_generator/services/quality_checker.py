@@ -95,6 +95,56 @@ class QualityChecker:
         checks.extend(self._check_media(project_dir))
         return ProjectQualityReport(str(project_dir), tuple(checks))
 
+    def check_ending(
+        self,
+        narration: str,
+        min_duration_seconds: float,
+        max_duration_seconds: float,
+        audio_file: Path | None = None,
+        video_file: Path | None = None,
+    ) -> ProjectQualityReport:
+        """短いエンディング用に、本編の文字数下限を適用せず検査する。"""
+        normalized = re.sub(r"\s+", "", narration)
+        estimated = (
+            len(normalized) / self._rules.characters_per_second
+            if self._rules.characters_per_second
+            else 0.0
+        )
+        forbidden = [word for word in self._rules.forbidden_words if word in narration]
+        checks = [
+            QualityCheckResult(
+                "エンディングナレーション",
+                QualitySeverity.ERROR if not normalized else QualitySeverity.PASS,
+                "ナレーションが空です。" if not normalized else "ナレーションがあります。",
+                len(normalized),
+            ),
+            QualityCheckResult(
+                "想定読み上げ時間",
+                QualitySeverity.ERROR if estimated < min_duration_seconds or estimated > max_duration_seconds else QualitySeverity.PASS,
+                f"{min_duration_seconds:g}〜{max_duration_seconds:g}秒の範囲で評価しました。",
+                round(estimated, 1),
+            ),
+            QualityCheckResult(
+                "NGワード",
+                QualitySeverity.ERROR if forbidden else QualitySeverity.PASS,
+                f"NGワードを検出しました: {', '.join(forbidden)}" if forbidden else "NGワードはありません。",
+                len(forbidden),
+            ),
+        ]
+        if audio_file is not None:
+            checks.append(QualityCheckResult(
+                "音声ファイル",
+                QualitySeverity.PASS if audio_file.is_file() and audio_file.stat().st_size > 0 else QualitySeverity.ERROR,
+                "音声ファイルを確認しました。" if audio_file.is_file() and audio_file.stat().st_size > 0 else "音声ファイルがありません。",
+            ))
+        if video_file is not None:
+            checks.append(QualityCheckResult(
+                "エンディング動画",
+                QualitySeverity.PASS if video_file.is_file() and video_file.stat().st_size > 0 else QualitySeverity.ERROR,
+                "動画ファイルを確認しました。" if video_file.is_file() and video_file.stat().st_size > 0 else "動画ファイルがありません。",
+            ))
+        return ProjectQualityReport("ending", tuple(checks))
+
     def save_report(self, report: ProjectQualityReport, output_dir: Path) -> tuple[Path, Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
         json_file = output_dir / "quality_report.json"

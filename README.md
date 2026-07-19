@@ -163,6 +163,20 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 同じ入力と設定で生成した中間成果物は`cache/`から再利用されます。工程イベントは`logs/run_history.jsonl`、実行ごとの集計は`output/history.json`、アプリケーションログは`logs/application.log`へ保存されます。
 
+## テンプレート共通エンディング
+
+各テンプレート配下を再帰的に検索し、`.txt`、`.png`、`.jpg`、`.jpeg`、`.webp`を共通エンディングの素材として利用します。テキストは口調・チャンネル方針の文脈、画像は背景やロゴ等として扱われます。生成結果は`generated_assets/endings/<template>/`に保存され、素材・TTS・動画・エンディング設定から計算したSHA-256ハッシュが一致する限り再利用されます。
+
+```powershell
+.\run.cmd ending generate --template zatsugaku
+.\run.cmd ending generate --template zatsugaku --force
+.\run.cmd ending generate-all
+.\run.cmd ending list
+.\run.cmd ending delete --template zatsugaku
+```
+
+`config/config.yaml` の `ending` セクションで、機能の有効化、3〜8秒の長さ、参照テキスト上限、画像選択（`first` / `random` / `sequence`）、本編への自動結合を設定できます。`auto_append: true`では動画レンダリング後に`main.mp4`、`ending.mp4`、`final.mp4`を作成します。YouTube投稿時は`final.mp4`を最優先で使用します。
+
 ## YouTubeへ投稿する
 
 動画生成と投稿は分離されており、投稿は明示した場合だけ実行されます。

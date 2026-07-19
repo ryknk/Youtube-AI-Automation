@@ -74,7 +74,12 @@ class FfmpegVideoRenderer(VideoRenderer):
 
         command = [self._executable, "-y"]
         for scene in scenes:
-            command.extend(["-loop", "1", "-t", f"{scene.duration_seconds:.3f}", "-i", str(scene.image_file)])
+            # image2's default is 25 fps.  Keep its input clock aligned with
+            # zoompan/output fps so the final scene is not shortened.
+            command.extend([
+                "-loop", "1", "-framerate", str(self._settings.fps),
+                "-t", f"{scene.duration_seconds:.3f}", "-i", str(scene.image_file),
+            ])
             command.extend(["-i", str(scene.audio_file)])
 
         bgm_input_index: int | None = None

@@ -116,6 +116,15 @@ cache:
   # キャッシュを保持する日数
   expiration_days: 30
 
+# テンプレートごとに再利用する共通エンディング設定
+ending:
+  enabled: true
+  auto_append: true
+  min_duration: 3
+  max_duration: 8
+  max_reference_text_chars: 10000
+  image_mode: sequence
+
 # ジョブキューの設定
 queue:
   # 1件の失敗時に後続ジョブの処理も停止するか

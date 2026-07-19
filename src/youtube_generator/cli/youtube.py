@@ -66,9 +66,10 @@ def run_youtube(arguments: list[str]) -> None:
 def _build_request(manager: JobManager, job_id: str, privacy: str, category_id: str, publish_at: datetime | None) -> UploadRequest:
     job = manager.get(job_id)
     root = job.output_dir
-    video = root / "video" / "video.mp4"
-    if not video.is_file():
-        raise FileNotFoundError(f"動画が見つかりません: {video}")
+    candidates = (root / "video" / "final.mp4", root / "video" / "main.mp4", root / "video" / "video.mp4")
+    video = next((file for file in candidates if file.is_file()), None)
+    if video is None:
+        raise FileNotFoundError(f"動画が見つかりません: {candidates[0]}")
     metadata = root / "metadata"
     title = _first_line(metadata / "titles.txt")
     description = (metadata / "description.txt").read_text(encoding="utf-8").strip()

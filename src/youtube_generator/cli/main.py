@@ -1,6 +1,7 @@
 """コマンドラインからアプリケーションを起動する。"""
 
 import argparse
+import shutil
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -31,6 +32,8 @@ from youtube_generator.services.srt_builder import SrtBuilder
 from youtube_generator.services.template_service import TemplateManager
 from youtube_generator.services.video_settings import load_video_settings
 from youtube_generator.plugins.manager import PluginManager
+from youtube_generator.cli.ending import run_ending
+from youtube_generator.cli.ending import create_ending_manager
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -55,6 +58,9 @@ def create_parser() -> argparse.ArgumentParser:
 
 def run() -> None:
     """アプリケーションを起動し、将来の生成フローの入口を提供する。"""
+    if len(sys.argv) > 1 and sys.argv[1] == "ending":
+        run_ending(sys.argv[2:])
+        return
     args = create_parser().parse_args()
 
     try:
@@ -230,6 +236,17 @@ def run() -> None:
                 ),
             )
             video_file = GenerateVideoUseCase(renderer).execute(args.generate_video, str(video_values["output_format"]))
+            ending_values = video_settings.values.get("ending", {})
+            if isinstance(ending_values, dict) and bool(ending_values.get("enabled", True)) and bool(ending_values.get("auto_append", True)):
+                main_file = args.generate_video / "main.mp4"
+                ending_file = args.generate_video / "ending.mp4"
+                final_file = args.generate_video / "final.mp4"
+                shutil.copy2(video_file, main_file)
+                ending_manager = create_ending_manager()
+                ending_asset = ending_manager.ensure(template.template_id)
+                if ending_asset is not None:
+                    shutil.copy2(ending_asset.video_file, ending_file)
+                    video_file = ending_manager.append_to(main_file, template.template_id, final_file)
             logger.info("MP4動画を保存しました: %s", video_file)
             history.record(run_id, "video_generated", video_file=str(video_file))
             history.record(run_id, "run_completed")

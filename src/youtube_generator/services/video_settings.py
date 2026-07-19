@@ -35,4 +35,7 @@ def load_video_settings(config_file: Path) -> VideoSettings:
     if not required_image_settings.issubset(image_settings):
         missing = ", ".join(sorted(required_image_settings - image_settings.keys()))
         raise ValueError(f"config.yaml の image 設定がありません: {missing}")
+    ending_settings = values.get("ending", {})
+    if ending_settings and not isinstance(ending_settings, dict):
+        raise ValueError("config.yaml の ending 設定が不正です。")
     return VideoSettings(values=values, fingerprint=hashlib.sha256(raw_content).hexdigest())

@@ -34,6 +34,7 @@ data/jobs.db
 # Generated artifacts
 cache/*
 !cache/.gitkeep
+generated_assets/
 output/*
 !output/.gitkeep
 logs/*

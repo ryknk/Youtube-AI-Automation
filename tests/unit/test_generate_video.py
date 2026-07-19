@@ -32,3 +32,7 @@ class GenerateVideoTests(unittest.TestCase):
         self.assertEqual(command[command.index("-c:v") + 1], "libx264")
         self.assertEqual(command[command.index("-pix_fmt") + 1], "yuv420p")
         self.assertEqual(command[command.index("-r") + 1], "30")
+        self.assertEqual(command.count("-framerate"), len(scenes))
+        for image_file in ("scene01.png", "scene02.png"):
+            image_index = command.index(image_file)
+            self.assertEqual(command[image_index - 5:image_index - 3], ["-framerate", "30"])

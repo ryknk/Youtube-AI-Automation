@@ -23,6 +23,17 @@ class OpenAITextProvider(TextGenerator):
     def generate_text(self, theme: str, template: VideoTemplate) -> str:
         return self._script_generator.generate(theme, template)
 
+    def generate_ending_narration(
+        self,
+        template: VideoTemplate,
+        reference_text: str,
+        min_duration_seconds: float,
+        max_duration_seconds: float,
+    ) -> str:
+        return self._script_generator.generate_ending(
+            template, reference_text, min_duration_seconds, max_duration_seconds
+        )
+
     def split_scenes(self, script: str) -> tuple[str, ...]:
         return self._scene_splitter.split(script)
 

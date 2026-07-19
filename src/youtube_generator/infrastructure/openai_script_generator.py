@@ -36,6 +36,22 @@ class OpenAIScriptGenerator(ScriptGenerator):
             raise ScriptGenerationError("OpenAI APIから台本文を取得できませんでした。")
         return script
 
+    def generate_ending(
+        self,
+        template: VideoTemplate,
+        reference_text: str,
+        min_duration_seconds: float,
+        max_duration_seconds: float,
+    ) -> str:
+        """テンプレート素材に沿った、動画固有ではない締めの文を生成する。"""
+        response = self._create_ending_response(
+            template, reference_text, min_duration_seconds, max_duration_seconds
+        )
+        narration = response.output_text.strip()
+        if not narration:
+            raise ScriptGenerationError("OpenAI APIからエンディング文を取得できませんでした。")
+        return narration
+
     def _create_response(self, theme: str, template: VideoTemplate):  # type: ignore[no-untyped-def]
         @retry_on_failure(
             policy=self._retry_policy,
@@ -55,6 +71,37 @@ class OpenAIScriptGenerator(ScriptGenerator):
                     f"動画テーマ: {theme}\n"
                     f"想定シーン構成: {' → '.join(template.scene_structure)}\n"
                     f"画像の方向性: {template.image_style}"
+                ),
+            )
+
+        return request()
+
+    def _create_ending_response(
+        self,
+        template: VideoTemplate,
+        reference_text: str,
+        min_duration_seconds: float,
+        max_duration_seconds: float,
+    ):  # type: ignore[no-untyped-def]
+        @retry_on_failure(
+            policy=self._retry_policy,
+            retryable_exceptions=(APIConnectionError, APITimeoutError, InternalServerError, RateLimitError),
+            logger=self._logger,
+        )
+        def request():  # type: ignore[no-untyped-def]
+            return self._client.responses.create(
+                model=self._model,
+                instructions=(
+                    "あなたは日本語YouTube動画のエンディング文を書く編集者です。"
+                    "テンプレートの雰囲気に合わせ、複数の動画で共通利用できる自然な締めの"
+                    "ナレーションだけを1〜2文で出力してください。特定の動画テーマ、見出し、"
+                    "Markdown、過剰な宣伝表現は含めないでください。"
+                ),
+                input=(
+                    f"テンプレート名: {template.display_name}\n"
+                    f"台本方針: {template.script_instruction}\n"
+                    f"想定時間: {min_duration_seconds:.0f}〜{max_duration_seconds:.0f}秒\n"
+                    f"テンプレート素材の補足:\n{reference_text}"
                 ),
             )
 
