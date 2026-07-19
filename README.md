@@ -1,109 +1,11 @@
 # Youtube AI Automation
 
-## Testing
-
-Install development dependencies and run tests without calling any external API:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m pytest
-.\.venv\Scripts\python.exe -m pytest -m unit
-.\.venv\Scripts\python.exe -m pytest -m integration
-.\.venv\Scripts\python.exe -m pytest -m "not slow"
-```
-
-Coverage reports are available with:
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest --cov=youtube_generator --cov-report=term-missing
-.\.venv\Scripts\python.exe -m pytest --cov=youtube_generator --cov-report=html
-```
-
-`MockTextGenerator`, `MockTTSProvider`, `MockImageProvider`, and `MockYouTubeUploader` are used for ordinary tests. Tests marked `external` are skipped unless `RUN_EXTERNAL_TESTS=true` is set explicitly.
-
-## YouTube upload
-
-Uploads are separate from video generation and require an explicit command. `youtube.upload_enabled` defaults to `false` in `config/config.yaml`; change it to `true` only after reviewing the target account and video.
-
-1. In Google Cloud Console, create a project, enable **YouTube Data API v3**, and create an OAuth 2.0 Desktop application client.
-2. Download the client JSON as `client_secret.json` in the project root. It is ignored by Git.
-3. Run `python main.py youtube auth` once and complete the browser authorization. The resulting `youtube_token.json` is also ignored by Git.
-
-```powershell
-python main.py youtube upload <job_id>
-python main.py youtube upload <job_id> --privacy private
-python main.py youtube schedule <job_id> --publish-at "2026-08-01T19:00:00+09:00"
-python main.py youtube status <job_id>
-```
-
-Supported privacy values are `private`, `unlisted`, and `public`; the default is `private`. The command displays the upload details and asks for `Continue? [y/N]`. Only `--yes` skips that prompt. Upload history is stored in `data/jobs.db`, and a second upload for the same job is rejected unless `--force` is supplied.
-
-## Job queue
-
-Jobs are stored in `data/jobs.db` and their artifacts are stored under `output/<genre>/<job_id>_<theme>/`.
-
-```powershell
-python main.py queue add "宇宙の雑学" --template trivia
-python main.py queue import topics.csv
-python main.py queue list
-python main.py queue status
-python main.py queue run
-python main.py queue retry <job_id>
-python main.py queue cancel <job_id>
-```
-
-CSV files use `theme,template` headers. JSON files use an array of objects with `theme` and `template` fields. Jobs are executed one at a time in registration order. `queue.stop_on_error: false` lets later jobs continue after a failure.
-
-## Templates
-
-Genre templates are stored under `templates/<template_id>/`. Every template contains `prompt.txt`, `image_prompt.txt`, `title_prompt.txt`, `thumbnail_prompt.txt`, and `video.yaml`.
-
-```powershell
-python main.py --theme "宇宙の不思議" --template science
-python main.py --theme "織田信長" --template history
-```
-
-If `--template` is omitted, `default` is used. Bundled templates are `default`, `zatsugaku`, `history`, `toshidensetsu`, `psychology`, and `science`.
-
-## Plugin architecture
-
-Provider implementations live in `src/youtube_generator/plugins/`. The video pipeline depends only on the `TextGenerator`, `TTSProvider`, and `ImageProvider` protocols.
-
-```text
-plugins/
-├── base/       # common protocols
-├── text/       # LLM providers
-├── tts/        # speech providers
-├── image/      # image providers
-└── manager.py  # provider factory
-```
-
-### Switching providers
-
-Set the selected provider in `config/config.yaml`. OpenAI is used for text and speech, while Black Forest Labs is used for image generation by default.
-
-```yaml
-providers:
-  text: openai
-  tts: openai
-  image: bfl
-```
-
-Set `OPENAI_API_KEY` and `BFL_API_KEY` in `.env`. Scene images use `flux-2-pro`, and thumbnails use the higher-quality `flux-2-max`. To return image generation to OpenAI, set `providers.image` to `openai`; `image.openai_model` and `image.quality` will then be used.
-
-### Adding a provider
-
-1. Implement the relevant protocol under `plugins/text`, `plugins/tts`, or `plugins/image`.
-2. Register its name in `PluginManager`.
-3. Select that name in `config.yaml`.
-
-The pipeline itself does not need to change. Plugins can use the common retry, logging, cache, configuration, and `.env` secret-management facilities.
-
-テーマ入力からYouTube動画の素材・動画・メタデータを生成する、Python 3.12向けの自動生成ツールです。現在は開発の土台のみを実装しており、API連携や動画生成はまだ行いません。
+**Youtube AI Automation**は、テーマから台本、シーン音声、画像、字幕、動画、メタデータ、サムネイルを生成するPythonアプリケーションです。ジョブキューによる一括実行と、明示操作によるYouTube投稿にも対応しています。
 
 ## 必要環境
 
-- Python 3.12以上（Python 3.14.6で動作確認済み）
+- Python 3.12以上
+- FFmpeg（`ffmpeg`と`ffprobe`をPATHへ追加）
 - Windows PowerShell
 
 ## セットアップ
@@ -117,84 +19,138 @@ python -m pip install -e .
 Copy-Item .env.example .env
 ```
 
-`.env` にAPIキーなどの設定を記載します。現段階では `OPENAI_API_KEY` は未設定でも起動できます。
+`.env`へ次のAPIキーを設定します。
 
-## 起動方法
-
-```powershell
-python main.py --theme "宇宙の不思議"
+```dotenv
+OPENAI_API_KEY=
+BFL_API_KEY=
 ```
 
-テーマを指定すると、OpenAI Responses APIで生成した台本を `output/{ジャンル名}/{実行ID}_{入力テーマ}/script.txt` にUTF-8で保存します。ジャンル名にはテンプレートの表示名が使われます。事前に `.env` の `OPENAI_API_KEY` を設定してください。
+OpenAIは台本・シーン分割・音声・メタデータ生成、Black Forest Labsは画像生成に使用します。ログレベルなど、APIキー以外の環境固有設定も`.env`で管理します。
 
-既存の台本は、GPTに意味単位で最大30シーンへ分割させられます。出力は入力した `script.txt` と同じフォルダの `scene01.txt`、`scene02.txt` のような連番ファイルです。
+## 設定
 
-```powershell
-.\.venv\Scripts\youtube-video-generator --split-script output\{ジャンル名}\{実行ID}_{入力テーマ}\script.txt
-```
+実行設定は[config/config.yaml](config/config.yaml)へ集約されています。主な項目は次のとおりです。
 
-シーンテキストがあるフォルダを指定すると、すべての `sceneNN.txt` を番号順に音声化し、同じフォルダへ `sceneNN.mp3` として保存します。
+- 動画：`1920×1080`、30fps
+- シーン画像：FLUX.2 Pro、`1920×1080`
+- サムネイル：FLUX.2 Max、`1280×720`
+- 最大シーン数：30
+- 音声、字幕、BGM、品質検査、キャッシュ、リトライ
+- YouTubeの公開範囲とアップロード許可
 
-```powershell
-.\.venv\Scripts\youtube-video-generator --generate-audio output\{ジャンル名}\{実行ID}_{入力テーマ}
-```
+ジャンルごとの台本・画像・タイトル・サムネイル方針は`templates/<template_id>/`で管理します。各テンプレートには`prompt.txt`、`image_prompt.txt`、`title_prompt.txt`、`thumbnail_prompt.txt`、`video.yaml`があります。
 
-シーンテキストから統一したリアル調の画像プロンプトを作成し、16:9の高品質PNGを生成します。
-
-```powershell
-.\.venv\Scripts\youtube-video-generator --generate-images output\{ジャンル名}\{実行ID}_{入力テーマ}
-```
-
-台本の内容から、`config/config.yaml` の `image.thumbnail_size` で指定したサイズのサムネイル画像を生成します。
+利用可能なテンプレートは次のコマンドで確認できます。
 
 ```powershell
-.\.venv\Scripts\youtube-video-generator --generate-thumbnail output\{ジャンル名}\{実行ID}_{入力テーマ}
+python main.py --list-templates
 ```
 
-出力先は `output\{ジャンル名}\{実行ID}_{入力テーマ}\thumbnail.png` です。
-
-FFmpegに含まれる `ffprobe` を使い、各 `sceneNN.mp3` の再生時間に対応したSRT字幕を生成します。FFmpegをPATHへ追加してから実行してください。
+## ジョブキューで動画を生成する
 
 ```powershell
-.\.venv\Scripts\youtube-video-generator --generate-subtitles output\{ジャンル名}\{実行ID}_{入力テーマ}
+python main.py queue add "宇宙の雑学" --template science
+python main.py queue run
+python main.py queue status
 ```
 
-出力先は `output\{ジャンル名}\{実行ID}_{入力テーマ}\subtitles.srt` です。
+ジョブは登録順に1件ずつ処理されます。成果物は次の構成で保存されます。
 
-以下が作成・利用されます。
+```text
+output/<ジャンル名>/<実行ID>_<入力テーマ>/
+├── script/
+├── audio/
+├── images/
+├── subtitle/
+├── video/
+├── thumbnail/
+├── metadata/
+└── quality_report/
+```
 
-- `output/`: 将来の動画・字幕・音声などの成果物
-- `logs/application.log`: 実行ログ
-
-## 構成
-
-- `src/youtube_generator/app/`: 生成フローのユースケース
-- `src/youtube_generator/domain/`: ドメインモデル・抽象インターフェース
-- `src/youtube_generator/infrastructure/`: API・FFmpeg・ファイル連携
-- `src/youtube_generator/services/`: 台本分割・字幕生成などのロジック
-- `src/youtube_generator/cli/`: コマンドライン起点
-- `tests/`: ユニット・結合テスト
-
-## 設定・品質管理
-
-コードを変更せずに、`config/config.yaml` とテンプレートファイルを編集して挙動を切り替えられます。
-
-- `templates/{テンプレートID}/`: ジャンル別の台本指示、画像・タイトル・サムネイル方針、動画設定
-- `config/config.yaml`: モデル、動画、音声、画像、字幕、品質チェック、キャッシュ、アップロードなどの全体設定
-
-テンプレートの確認と品質チェックは、APIなしで実行できます。
+その他のキュー操作：
 
 ```powershell
-.\.venv\Scripts\youtube-video-generator --list-templates
-.\.venv\Scripts\youtube-video-generator --theme "江戸時代" --template history --script "確認したい台本文"
+python main.py queue import topics.csv
+python main.py queue list
+python main.py queue retry <job_id>
+python main.py queue cancel <job_id>
 ```
 
-同一のテーマ・テンプレート・動画設定では `.cache/` の中間成果物を再利用する設計です。実行の開始・完了・失敗・キャッシュ利用・品質検査は `logs/run_history.jsonl` に記録されます。`logs/application.log` には詳細なアプリケーションログが残ります。
+CSVは`theme,template`ヘッダー、JSONは`theme`と`template`を持つオブジェクトの配列を使用します。
 
-`services/retry.py` の `retry_on_failure` は、OpenAI・画像生成APIの実装に適用します。`config/config.yaml` の `retry` で、再試行回数と指数バックオフの待機時間を調整できます。
+## 工程ごとに実行する
 
-## 今後の実装予定
+台本生成：
 
-1. 台本とメタデータの生成
-2. シーン分割・音声・画像・字幕の生成
-3. FFmpegによるMP4とサムネイルの出力
+```powershell
+python main.py --theme "宇宙の不思議" --template science
+```
+
+生成された台本は`output/<ジャンル名>/<実行ID>_<入力テーマ>/script.txt`へ保存されます。以降は同じ作業フォルダを指定して各工程を実行します。
+
+```powershell
+python main.py --split-script <作業フォルダ>\script.txt --template science
+python main.py --generate-audio <作業フォルダ> --template science
+python main.py --generate-images <作業フォルダ> --template science
+python main.py --generate-subtitles <作業フォルダ> --template science
+python main.py --generate-video <作業フォルダ> --template science
+python main.py --generate-metadata <作業フォルダ> --template science
+python main.py --generate-thumbnail <作業フォルダ> --template science
+```
+
+同じ入力と設定で生成した中間成果物は`cache/`から再利用されます。工程イベントは`logs/run_history.jsonl`、実行ごとの集計は`output/history.json`、アプリケーションログは`logs/application.log`へ保存されます。
+
+## YouTubeへ投稿する
+
+動画生成と投稿は分離されており、投稿は明示した場合だけ実行されます。
+
+1. Google Cloud ConsoleでYouTube Data API v3を有効化します。
+2. OAuth 2.0デスクトップアプリの認証情報を作成します。
+3. クライアントJSONをプロジェクト直下の`client_secret.json`へ保存します。
+4. `python main.py youtube auth`を実行して認証します。
+5. `config/config.yaml`の`youtube.upload_enabled`を`true`へ変更します。
+
+```powershell
+python main.py youtube upload <job_id>
+python main.py youtube upload <job_id> --privacy private
+python main.py youtube schedule <job_id> --publish-at "2026-08-01T19:00:00+09:00"
+python main.py youtube status <job_id>
+```
+
+公開範囲は`private`、`unlisted`、`public`です。投稿前には確認が表示され、`--yes`を付けた場合だけ省略されます。同じジョブを再投稿する場合は`--force`が必要です。
+
+## 画像プロバイダーをOpenAIへ戻す
+
+既定の画像プロバイダーはBFLです。OpenAIへ切り替える場合は`config/config.yaml`を次のように変更します。
+
+```yaml
+providers:
+  image: openai
+```
+
+この場合は`image.openai_model`と`image.quality`が使用されます。
+
+## テスト
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest
+python -m pytest -m unit
+python -m pytest -m integration
+python -m pytest --cov=youtube_generator --cov-report=term-missing
+```
+
+通常のテストでは外部APIを呼び出しません。`external`マーカー付きテストは、`RUN_EXTERNAL_TESTS=true`を明示した場合だけ実行されます。
+
+## ソース構成
+
+- `src/youtube_generator/app/`：生成フローのユースケース
+- `src/youtube_generator/domain/`：ドメインモデル
+- `src/youtube_generator/infrastructure/`：API、FFmpeg、永続化
+- `src/youtube_generator/plugins/`：テキスト、音声、画像プロバイダー
+- `src/youtube_generator/services/`：品質検査や補助処理
+- `src/youtube_generator/jobs/`：ジョブキューと一括生成
+- `src/youtube_generator/youtube/`：YouTube投稿
+- `tests/`：ユニット・結合テスト
