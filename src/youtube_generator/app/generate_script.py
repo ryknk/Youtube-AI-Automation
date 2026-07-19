@@ -15,7 +15,7 @@ class GenerateScriptUseCase:
         self._output_dir = output_dir
 
     def execute(self, theme: str, template: VideoTemplate, run_id: str) -> Path:
-        """台本を生成して output/{ジャンル名}/{run_id}_{テーマ}/script.txt に保存する。"""
+        """台本を生成して output/{ジャンル名}/{run_id}_{テンプレート名}_{テーマ}/script.txt に保存する。"""
         script = self._generator.generate_text(theme, template)
         script_file = self.output_directory(self._output_dir, theme, template, run_id) / "script.txt"
         script_file.parent.mkdir(parents=True, exist_ok=True)
@@ -28,8 +28,11 @@ class GenerateScriptUseCase:
     ) -> Path:
         """テンプレートのジャンル名と入力テーマから実行単位の出力先を返す。"""
         genre_name = cls._safe_path_component(template.display_name, fallback=template.template_id)
+        template_name = cls._safe_path_component(
+            template.display_name, fallback=template.template_id
+        )
         theme_name = cls._safe_path_component(theme, fallback="テーマ未指定")
-        return output_root / genre_name / f"{run_id}_{theme_name}"
+        return output_root / genre_name / f"{run_id}_{template_name}_{theme_name}"
 
     @staticmethod
     def _safe_path_component(value: str, fallback: str) -> str:

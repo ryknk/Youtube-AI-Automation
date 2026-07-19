@@ -44,7 +44,7 @@ class GenerateScriptUseCaseTests(unittest.TestCase):
 
             self.assertEqual(script_file.name, "script.txt")
             self.assertEqual(script_file.read_text(encoding="utf-8"), "宇宙の台本\n")
-            self.assertEqual(script_file.parent.name, "run-001_宇宙")
+            self.assertEqual(script_file.parent.name, "run-001_雑学_宇宙")
             self.assertEqual(script_file.parent.parent.name, "雑学")
 
     def test_output_directory_replaces_windows_invalid_characters(self) -> None:
@@ -54,7 +54,10 @@ class GenerateScriptUseCaseTests(unittest.TestCase):
             Path("output"), "星:宇宙?*", template, "run-002"
         )
 
-        self.assertEqual(output_dir, Path("output") / "雑学_豆知識" / "run-002_星_宇宙__")
+        self.assertEqual(
+            output_dir,
+            Path("output") / "雑学_豆知識" / "run-002_雑学_豆知識_星_宇宙__",
+        )
 
     def test_openai_generator_uses_responses_api(self) -> None:
         template = VideoTemplate("trivia", "雑学", "指示", "画像", ("導入", "本編"))

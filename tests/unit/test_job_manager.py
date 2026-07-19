@@ -14,14 +14,14 @@ class JobManagerTests(unittest.TestCase):
             manager = JobManager(
                 root / "jobs.db", root / "output",
                 output_directory_factory=lambda theme, template, job_id: (
-                    root / "output" / "雑学" / f"{job_id}_{theme}"
+                    root / "output" / "雑学" / f"{job_id}_{template}_{theme}"
                 ),
             )
 
             job = manager.add("宇宙", "trivia")
 
             self.assertEqual(job.output_dir.parent.name, "雑学")
-            self.assertEqual(job.output_dir.name, f"{job.job_id}_宇宙")
+            self.assertEqual(job.output_dir.name, f"{job.job_id}_trivia_宇宙")
 
     def test_add_import_and_run_in_creation_order(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -31,8 +31,8 @@ class JobManagerTests(unittest.TestCase):
             second = manager.add("歴史", "history")
             processed: list[str] = []
 
-            self.assertEqual(first.output_dir.name, f"{first.job_id}_宇宙")
-            self.assertEqual(second.output_dir.name, f"{second.job_id}_歴史")
+            self.assertEqual(first.output_dir.name, f"{first.job_id}_trivia_宇宙")
+            self.assertEqual(second.output_dir.name, f"{second.job_id}_history_歴史")
 
             def processor(job, update_stage):  # type: ignore[no-untyped-def]
                 processed.append(job.job_id)
@@ -49,9 +49,12 @@ class JobManagerTests(unittest.TestCase):
             root = Path(temporary_directory)
             manager = JobManager(root / "jobs.db", root / "output" / "jobs")
 
-            job = manager.add('星/宇宙:*? ', "trivia")
+            job = manager.add('星/宇宙:*? ', "雑学/豆知識")
 
-            self.assertEqual(job.output_dir.name, f"{job.job_id}_星_宇宙___")
+            self.assertEqual(
+                job.output_dir.name,
+                f"{job.job_id}_雑学_豆知識_星_宇宙___",
+            )
 
     def test_failure_does_not_stop_next_job_and_retry_recovers(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

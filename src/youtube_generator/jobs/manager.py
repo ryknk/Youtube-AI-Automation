@@ -74,7 +74,10 @@ class JobManager:
         output_dir = (
             self._output_directory_factory(theme.strip(), template.strip(), job_id)
             if self._output_directory_factory is not None
-            else self._jobs_output_dir / f"{job_id}_{self._safe_path_component(theme)}"
+            else self._jobs_output_dir / (
+                f"{job_id}_{self._safe_path_component(template)}_"
+                f"{self._safe_path_component(theme)}"
+            )
         )
         for name in ("script", "audio", "images", "subtitle", "video", "thumbnail", "metadata", "quality_report"):
             (output_dir / name).mkdir(parents=True, exist_ok=True)

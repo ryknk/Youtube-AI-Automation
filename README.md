@@ -58,7 +58,7 @@ python main.py queue status
 ジョブは登録順に1件ずつ処理されます。成果物は次の構成で保存されます。
 
 ```text
-output/<ジャンル名>/<実行ID>_<入力テーマ>/
+output/<ジャンル名>/<実行ID>_<テンプレート名>_<入力テーマ>/
 ├── script/
 ├── audio/
 ├── images/
@@ -88,7 +88,7 @@ CSVは`theme,template`ヘッダー、JSONは`theme`と`template`を持つオブ�
 python main.py --theme "宇宙の不思議" --template science
 ```
 
-生成された台本は`output/<ジャンル名>/<実行ID>_<入力テーマ>/script.txt`へ保存されます。以降は同じ作業フォルダを指定して各工程を実行します。
+生成された台本は`output/<ジャンル名>/<実行ID>_<テンプレート名>_<入力テーマ>/script.txt`へ保存されます。以降は同じ作業フォルダを指定して各工程を実行します。
 
 ```powershell
 python main.py --split-script <作業フォルダ>\script.txt --template science
