@@ -29,6 +29,10 @@ if __name__ == "__main__":
 SRC_DIR = PROJECT_DIR / "src"
 sys.path.insert(0, str(SRC_DIR))
 
+# PowerShell 5.1用ラッパーでは全出力を単一ストリームとしてOut-Hostへ渡す。
+if os.getenv("YOUTUBE_AI_MERGE_OUTPUT") == "1":
+    sys.stderr = sys.stdout
+
 from youtube_generator.cli.main import run  # noqa: E402
 
 

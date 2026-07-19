@@ -58,7 +58,10 @@ def run_queue(arguments: list[str]) -> None:
                 genre_name = templates.get(job.template).display_name
             except ValueError:
                 genre_name = job.template
-            print(f"{job.job_id} | {job.status} | {job.stage or '-'} | ジャンル: {genre_name} | テーマ: {job.theme}")
+            print(
+                f"{job.job_id} | {job.status} | {job.stage or '-'} | "
+                f"ジャンル: {genre_name} | テーマ: {job.theme}"
+            )
     elif args.command == "retry":
         print(manager.retry(args.job_id).job_id)
     elif args.command == "cancel":

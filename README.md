@@ -39,14 +39,16 @@ OpenAIは台本・シーン分割・音声・メタデータ生成、Black Fores
 - 音声、字幕、BGM、品質検査、キャッシュ、リトライ
 - YouTubeの公開範囲とアップロード許可
 
-`python main.py`の代わりに、セットアップ時に登録される`youtube-ai-automation`コマンドも使用できます。ただし、`queue`と`youtube`のサブコマンドは`python main.py`から実行してください。
+Windows PowerShell 5.1では、すべてのコマンドを`run.cmd`経由で実行します。このラッパーは内部の`run.ps1`を実行し、PythonとPowerShellの文字コードを一時的にUTF-8へ揃え、標準出力と標準エラーを`Out-Host`へ渡します。処理後は元の文字コード設定へ戻るため、プロンプト位置の乱れと文字化けを共通して防止できます。PowerShellの実行ポリシーを変更する必要はありません。
+
+PowerShell 7など、問題が発生しない環境では`python main.py`またはセットアップ時に登録される`youtube-ai-automation`コマンドも使用できます。
 
 ## テンプレート機能
 
 テンプレートは、動画ジャンルごとの生成方針とシーン構成を切り替える機能です。`--template <テンプレートID>`で選択し、省略時は`default`が使用されます。
 
 ```powershell
-python main.py --theme "宇宙の不思議" --template science
+.\run.cmd --theme "宇宙の不思議" --template science
 ```
 
 同梱テンプレート：
@@ -63,7 +65,7 @@ python main.py --theme "宇宙の不思議" --template science
 `trivia`は`zatsugaku`、`urban_legend`は`toshidensetsu`の別名としても使用できます。利用可能なテンプレートは次のコマンドで確認できます。
 
 ```powershell
-python main.py --list-templates
+.\run.cmd --list-templates
 ```
 
 テンプレートは`templates/<テンプレートID>/`に配置し、次の5ファイルで構成します。
@@ -88,9 +90,9 @@ scene_structure: [導入, 材料, 調理手順, まとめ]
 ## ジョブキューで動画を生成する
 
 ```powershell
-python main.py queue add "宇宙の雑学" --template science
-python main.py queue run
-python main.py queue status
+.\run.cmd queue add "宇宙の雑学" --template science
+.\run.cmd queue run
+.\run.cmd queue status
 ```
 
 ジョブは登録順に1件ずつ処理されます。成果物は次の構成で保存されます。
@@ -112,23 +114,25 @@ output/<ジャンル名>/<実行ID>_<入力テーマ>/
 その他のキュー操作：
 
 ```powershell
-python main.py queue import topics.csv
-python main.py queue list
-python main.py queue retry <job_id>
-python main.py queue cancel <job_id>
-python main.py queue delete <job_id>
-python main.py queue clear
-python main.py queue clear --yes
+.\run.cmd queue import topics.csv
+.\run.cmd queue list
+.\run.cmd queue retry <job_id>
+.\run.cmd queue cancel <job_id>
+.\run.cmd queue delete <job_id>
+.\run.cmd queue clear
+.\run.cmd queue clear --yes
 ```
 
 CSVは`theme,template`ヘッダー、JSONは`theme`と`template`を持つオブジェクトの配列を使用します。
+
+`queue list`と`queue status`は1ジョブを1行で表示します。これらを含むすべてのコマンド出力は`run.ps1`内部で`Out-Host`へ渡されます。
 
 ## キューを使わずに1件実行する
 
 キューを使用しない場合は、対象動画の各工程を順番に実行します。まず台本を生成します。
 
 ```powershell
-python main.py --theme "宇宙の不思議" --template science
+.\run.cmd --theme "宇宙の不思議" --template science
 ```
 
 生成された台本は`output/<ジャンル名>/<実行ID>_<入力テーマ>/script.txt`へ保存されます。直前に作成されたフォルダをPowerShell変数へ設定し、残りの工程を実行します。
@@ -136,13 +140,13 @@ python main.py --theme "宇宙の不思議" --template science
 ```powershell
 $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 
-python main.py --split-script "$workDir\script.txt" --template science
-python main.py --generate-audio "$workDir" --template science
-python main.py --generate-images "$workDir" --template science
-python main.py --generate-subtitles "$workDir" --template science
-python main.py --generate-video "$workDir" --template science
-python main.py --generate-metadata "$workDir" --template science
-python main.py --generate-thumbnail "$workDir" --template science
+.\run.cmd --split-script "$workDir\script.txt" --template science
+.\run.cmd --generate-audio "$workDir" --template science
+.\run.cmd --generate-images "$workDir" --template science
+.\run.cmd --generate-subtitles "$workDir" --template science
+.\run.cmd --generate-video "$workDir" --template science
+.\run.cmd --generate-metadata "$workDir" --template science
+.\run.cmd --generate-thumbnail "$workDir" --template science
 ```
 
 `--template`には台本生成時と同じIDを指定してください。テンプレートが異なると、画像・タイトル・サムネイルの生成方針も変わります。`--theme`、`--split-script`、各`--generate-*`は同時指定できないため、工程ごとに個別実行します。
@@ -152,7 +156,7 @@ python main.py --generate-thumbnail "$workDir" --template science
 既存の台本文だけをAPIなしで品質チェックする場合は、次のように実行します。
 
 ```powershell
-python main.py --script "確認したい台本文" --template science
+.\run.cmd --script "確認したい台本文" --template science
 ```
 
 文字数、想定時間、禁止表現、重複文などが`config/config.yaml`の`quality`設定に基づいて検査されます。
@@ -166,14 +170,14 @@ python main.py --script "確認したい台本文" --template science
 1. Google Cloud ConsoleでYouTube Data API v3を有効化します。
 2. OAuth 2.0デスクトップアプリの認証情報を作成します。
 3. クライアントJSONをプロジェクト直下の`client_secret.json`へ保存します。
-4. `python main.py youtube auth`を実行して認証します。
+4. `.\run.cmd youtube auth`を実行して認証します。
 5. `config/config.yaml`の`youtube.upload_enabled`を`true`へ変更します。
 
 ```powershell
-python main.py youtube upload <job_id>
-python main.py youtube upload <job_id> --privacy private
-python main.py youtube schedule <job_id> --publish-at "2026-08-01T19:00:00+09:00"
-python main.py youtube status <job_id>
+.\run.cmd youtube upload <job_id>
+.\run.cmd youtube upload <job_id> --privacy private
+.\run.cmd youtube schedule <job_id> --publish-at "2026-08-01T19:00:00+09:00"
+.\run.cmd youtube status <job_id>
 ```
 
 公開範囲は`private`、`unlisted`、`public`です。投稿前には確認が表示され、`--yes`を付けた場合だけ省略されます。同じジョブを再投稿する場合は`--force`が必要です。
