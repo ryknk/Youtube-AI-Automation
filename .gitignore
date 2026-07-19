@@ -40,6 +40,10 @@ output/*
 logs/*
 !logs/.gitkeep
 
+# Local media assets
+/assets/
+/templates/**/assets/
+
 # Editor / OS
 .vscode/
 .DS_Store
