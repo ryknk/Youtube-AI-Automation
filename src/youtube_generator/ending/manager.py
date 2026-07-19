@@ -6,7 +6,7 @@ import random
 import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from youtube_generator.domain.audio_duration_provider import AudioDurationProvider
 from youtube_generator.domain.quality import ProjectQualityReport
@@ -93,6 +93,8 @@ class EndingManager:
         settings: EndingSettings,
         cache_manager: CacheManager | None = None,
         settings_fingerprint: str = "",
+        renderer_for_template: Callable[[str], EndingRenderer] | None = None,
+        asset_fingerprint_for_template: Callable[[str], str] | None = None,
     ) -> None:
         self._templates = templates
         self._generated_root = generated_root
@@ -105,6 +107,8 @@ class EndingManager:
         self._settings = settings
         self._cache = cache_manager
         self._settings_fingerprint = settings_fingerprint
+        self._renderer_for_template = renderer_for_template
+        self._asset_fingerprint_for_template = asset_fingerprint_for_template
         self._logger = get_logger(__name__)
 
     def collect_materials(self, template_id: str) -> TemplateMaterials:
@@ -162,7 +166,9 @@ class EndingManager:
         duration = self._duration_provider.get_duration_seconds(audio_file)
         subtitle_file.write_text(self._subtitle_builder.build((SubtitleCue(narration, duration),)), encoding="utf-8")
         selected_images = self._select_images(materials.image_files, cache_key)
-        self._renderer.render(EndingRenderRequest(audio_file, subtitle_file, selected_images, video_file, duration))
+        self._renderer_for(template.template_id).render(
+            EndingRenderRequest(audio_file, subtitle_file, selected_images, video_file, duration)
+        )
         report = self._quality_checker.check_ending(
             narration, self._settings.min_duration, self._settings.max_duration, audio_file, video_file
         )
@@ -189,7 +195,7 @@ class EndingManager:
         if asset is None:
             return main_video
         self._logger.info("動画結合を開始します: template=%s", template_id)
-        self._renderer.concat(main_video, asset.video_file, output_file)
+        self._renderer_for(template_id).concat(main_video, asset.video_file, output_file)
         self._logger.info("動画結合を終了しました: output=%s", output_file)
         return output_file
 
@@ -232,6 +238,8 @@ class EndingManager:
         digest.update(materials.reference_text.encode("utf-8"))
         digest.update(json.dumps(asdict(self._settings), sort_keys=True).encode("utf-8"))
         digest.update(self._settings_fingerprint.encode("utf-8"))
+        if self._asset_fingerprint_for_template is not None:
+            digest.update(self._asset_fingerprint_for_template(template.template_id).encode("utf-8"))
         for image in materials.image_files:
             digest.update(str(image.relative_to(self._templates.directory_for(template.template_id))).encode("utf-8"))
             digest.update(image.read_bytes())
@@ -261,6 +269,9 @@ class EndingManager:
         if self._settings.image_mode == "random":
             return (random.Random(cache_key).choice(images),)
         return images
+
+    def _renderer_for(self, template_id: str) -> EndingRenderer:
+        return self._renderer_for_template(template_id) if self._renderer_for_template else self._renderer
 
     @classmethod
     def _is_ending_material(cls, file_path: Path, extensions: set[str]) -> bool:

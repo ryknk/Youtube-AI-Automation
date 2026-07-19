@@ -23,6 +23,9 @@ class VideoRenderSettings:
     bgm_enabled: bool
     bgm_file: Path
     bgm_volume: float
+    bgm_loop: bool = True
+    bgm_fade_in: float = 0.0
+    bgm_fade_out: float = 0.0
     subtitle_font: str = "Arial"
     subtitle_size: int = 36
     subtitle_color: str = "&H00FFFFFF"
@@ -85,7 +88,9 @@ class FfmpegVideoRenderer(VideoRenderer):
         bgm_input_index: int | None = None
         if self._settings.bgm_enabled:
             bgm_input_index = len(scenes) * 2
-            command.extend(["-stream_loop", "-1", "-i", str(self._settings.bgm_file)])
+            if self._settings.bgm_loop:
+                command.extend(["-stream_loop", "-1"])
+            command.extend(["-i", str(self._settings.bgm_file)])
 
         command.extend([
             "-filter_complex", self._build_filter_complex(scenes, subtitle_file, bgm_input_index),
@@ -124,7 +129,20 @@ class FfmpegVideoRenderer(VideoRenderer):
         if bgm_input_index is None:
             filters.append("[narration]anull[audio]")
         else:
-            filters.append(f"[narration][{bgm_input_index}:a]amix=inputs=2:duration=first:weights='1 {self._settings.bgm_volume}'[audio]")
+            total_duration = sum(scene.duration_seconds for scene in scenes)
+            fade_in = min(self._settings.bgm_fade_in, total_duration)
+            fade_out = min(self._settings.bgm_fade_out, total_duration)
+            fade_out_start = max(0.0, total_duration - fade_out)
+            bgm_filters = [
+                f"[{bgm_input_index}:a]atrim=duration={total_duration:.3f}",
+                f"volume={self._settings.bgm_volume}",
+            ]
+            if fade_in > 0:
+                bgm_filters.append(f"afade=t=in:st=0:d={fade_in:.3f}")
+            if fade_out > 0:
+                bgm_filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={fade_out:.3f}")
+            filters.append(",".join(bgm_filters) + "[bgm]")
+            filters.append("[narration][bgm]amix=inputs=2:duration=first:weights='1 1'[audio]")
         return ";".join(filters)
 
     def _find_scenes(self, scenes_dir: Path) -> tuple[RenderScene, ...]:

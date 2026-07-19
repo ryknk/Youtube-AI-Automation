@@ -68,6 +68,24 @@ bgm:
   path: assets/bgm.mp3
   # BGMの音量
   volume: 0.15
+  # テンプレートに設定がない場合のフォールバック先（path/volumeの別名）
+  default_file: assets/bgm.mp3
+  default_volume: 0.15
+  loop: true
+  fade_in: 0.0
+  fade_out: 0.0
+  missing_file_behavior: fallback
+  # per_section: 本編・エンディング別にミックス / final_mix: 最終段階で一度だけミックス
+  render_mode: per_section
+  ducking:
+    enabled: false
+    volume_during_speech: 0.04
+    attack: 0.2
+    release: 0.5
+
+# final_mix時の結合済み中間動画を保持するか
+final_render:
+  keep_intermediate: true
 
 # 字幕表示の設定
 subtitles:

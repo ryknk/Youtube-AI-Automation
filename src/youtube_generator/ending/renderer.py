@@ -65,7 +65,9 @@ class FfmpegEndingRenderer:
             ])
         command.extend(["-i", str(request.audio_file)])
         if self._settings.bgm_enabled and self._settings.bgm_file.is_file():
-            command.extend(["-stream_loop", "-1", "-i", str(self._settings.bgm_file)])
+            if self._settings.bgm_loop:
+                command.extend(["-stream_loop", "-1"])
+            command.extend(["-i", str(self._settings.bgm_file)])
         command.extend([
             "-filter_complex", self._filters(request, image_count),
             "-map", "[video]", "-map", "[audio]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
@@ -99,7 +101,19 @@ class FfmpegEndingRenderer:
         parts.append(f"[visual]subtitles=filename='{subtitle_path}':charenc=UTF-8:force_style='{style}'[video]")
         audio_index = image_count
         if self._settings.bgm_enabled and self._settings.bgm_file.is_file():
-            parts.append(f"[{audio_index}:a][{audio_index + 1}:a]amix=inputs=2:duration={duration}:weights='1 {self._settings.bgm_volume}'[audio]")
+            fade_in = min(self._settings.bgm_fade_in, request.duration_seconds)
+            fade_out = min(self._settings.bgm_fade_out, request.duration_seconds)
+            fade_out_start = max(0.0, request.duration_seconds - fade_out)
+            bgm_filters = [
+                f"[{audio_index + 1}:a]atrim=duration={request.duration_seconds:.3f}",
+                f"volume={self._settings.bgm_volume}",
+            ]
+            if fade_in > 0:
+                bgm_filters.append(f"afade=t=in:st=0:d={fade_in:.3f}")
+            if fade_out > 0:
+                bgm_filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={fade_out:.3f}")
+            parts.append(",".join(bgm_filters) + "[bgm]")
+            parts.append(f"[{audio_index}:a][bgm]amix=inputs=2:duration={duration}:weights='1 1'[audio]")
         else:
             parts.append(f"[{audio_index}:a]anull[audio]")
         return ";".join(parts)

@@ -31,9 +31,13 @@ from youtube_generator.services.image_prompt_builder import ImagePromptBuilder
 from youtube_generator.services.srt_builder import SrtBuilder
 from youtube_generator.services.template_service import TemplateManager
 from youtube_generator.services.video_settings import load_video_settings
+from youtube_generator.services.bgm_manager import BGMManager
+from youtube_generator.infrastructure.final_bgm_renderer import FinalBGMRenderer, FinalRenderSettings
 from youtube_generator.plugins.manager import PluginManager
 from youtube_generator.cli.ending import run_ending
 from youtube_generator.cli.ending import create_ending_manager
+from youtube_generator.cli.bgm import run_bgm
+from youtube_generator.cli.render import run_render
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -60,6 +64,12 @@ def run() -> None:
     """アプリケーションを起動し、将来の生成フローの入口を提供する。"""
     if len(sys.argv) > 1 and sys.argv[1] == "ending":
         run_ending(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "bgm":
+        run_bgm(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "render":
+        run_render(sys.argv[2:])
         return
     args = create_parser().parse_args()
 
@@ -224,13 +234,23 @@ def run() -> None:
                 logger.info("品質 [%s] %s: %s", check.severity.value.upper(), check.check_name, check.message)
             if quality_report.has_errors:
                 raise RuntimeError("品質チェックで重大なERRORを検出したため、動画生成を停止しました。")
-            configured_bgm = Path(str(bgm_values["path"]))
-            bgm_file = configured_bgm if configured_bgm.is_absolute() else settings.config_dir.parent / configured_bgm
+            bgm_manager = BGMManager(templates, bgm_values, settings.config_dir.parent)
+            render_mode = bgm_manager.render_mode(template)
+            bgm_setting = bgm_manager.resolve(template, "main")
+            if render_mode == "final_mix":
+                bgm_setting = replace(bgm_setting, enabled=False)
+            logger.info(
+                "BGM適用: template=%s, file=%s, source=%s, volume=%s, loop=%s, fade_in=%s, fade_out=%s",
+                template.template_id, bgm_setting.file, bgm_setting.source, bgm_setting.volume,
+                bgm_setting.loop, bgm_setting.fade_in, bgm_setting.fade_out,
+            )
             renderer = FfmpegVideoRenderer(
                 duration_provider=duration_provider,
                 settings=VideoRenderSettings(
                     width=int(video_values["width"]), height=int(video_values["height"]), fps=int(video_values["fps"]),
-                    bgm_enabled=bool(bgm_values["enabled"]), bgm_file=bgm_file, bgm_volume=float(bgm_values["volume"]),
+                    bgm_enabled=bgm_setting.enabled, bgm_file=bgm_setting.file or settings.config_dir.parent / "assets" / "bgm.mp3",
+                    bgm_volume=bgm_setting.volume, bgm_loop=bgm_setting.loop,
+                    bgm_fade_in=bgm_setting.fade_in, bgm_fade_out=bgm_setting.fade_out,
                     subtitle_font=str(subtitle_values["font"]), subtitle_size=int(subtitle_values["size"]),
                     subtitle_color=str(subtitle_values["color"]),
                 ),
@@ -246,7 +266,16 @@ def run() -> None:
                 ending_asset = ending_manager.ensure(template.template_id)
                 if ending_asset is not None:
                     shutil.copy2(ending_asset.video_file, ending_file)
-                    video_file = ending_manager.append_to(main_file, template.template_id, final_file)
+                    if render_mode == "final_mix":
+                        final_bgm = bgm_manager.resolve(template, "final")
+                        video_file = FinalBGMRenderer(
+                            FinalRenderSettings(
+                                width=int(video_values["width"]), height=int(video_values["height"]), fps=int(video_values["fps"]),
+                                keep_intermediate=bool(video_settings.values.get("final_render", {}).get("keep_intermediate", True)),
+                            ), cache_manager, ffprobe_executable=settings.ffprobe_executable,
+                        ).render(main_file, ending_file, args.generate_video, final_bgm)
+                    else:
+                        video_file = ending_manager.append_to(main_file, template.template_id, final_file)
             logger.info("MP4動画を保存しました: %s", video_file)
             history.record(run_id, "video_generated", video_file=str(video_file))
             history.record(run_id, "run_completed")

@@ -15,6 +15,7 @@ from youtube_generator.services.retry import RetryPolicy
 from youtube_generator.services.srt_builder import SrtBuilder
 from youtube_generator.services.template_service import TemplateManager
 from youtube_generator.services.video_settings import load_video_settings
+from youtube_generator.services.bgm_manager import BGMManager
 
 
 def create_ending_manager() -> EndingManager:
@@ -39,12 +40,33 @@ def create_ending_manager() -> EndingManager:
     )
     cache_values = values["cache"]
     cache = CacheManager(settings.cache_dir) if isinstance(cache_values, dict) and bool(cache_values["enabled"]) else None
+    templates = TemplateManager(settings.templates_dir)
+    bgm_manager = BGMManager(templates, bgm, settings.config_dir.parent)
+
+    def renderer_for_template(template_id: str) -> FfmpegEndingRenderer:
+        bgm_setting = bgm_manager.resolve(template_id, "ending")
+        if bgm_manager.render_mode(template_id) == "final_mix":
+            bgm_setting = bgm_setting.__class__(enabled=False, source="final_mix")
+        return FfmpegEndingRenderer(VideoRenderSettings(
+            width=renderer_settings.width, height=renderer_settings.height, fps=renderer_settings.fps,
+            bgm_enabled=bgm_setting.enabled, bgm_file=bgm_setting.file or bgm_file,
+            bgm_volume=bgm_setting.volume, bgm_loop=bgm_setting.loop,
+            bgm_fade_in=bgm_setting.fade_in, bgm_fade_out=bgm_setting.fade_out,
+            subtitle_font=renderer_settings.subtitle_font, subtitle_size=renderer_settings.subtitle_size,
+            subtitle_color=renderer_settings.subtitle_color,
+        ))
+
     return EndingManager(
-        TemplateManager(settings.templates_dir), settings.config_dir.parent / "generated_assets" / "endings",
+        templates, settings.config_dir.parent / "generated_assets" / "endings",
         plugin_manager.create_text_generator(retry_policy), plugin_manager.create_tts_provider(audio, retry_policy),
         FfprobeAudioDurationProvider(settings.ffprobe_executable), SrtBuilder(), FfmpegEndingRenderer(renderer_settings),
         QualityChecker(load_quality_rules(quality)), EndingSettings.from_config(values.get("ending", {})),
-        cache, config.fingerprint,
+        cache, config.fingerprint, renderer_for_template,
+        lambda template_id: (
+            "final_mix_without_section_bgm"
+            if bgm_manager.render_mode(template_id) == "final_mix"
+            else bgm_manager.resolve(template_id, "ending").cache_fingerprint
+        ),
     )
 
 

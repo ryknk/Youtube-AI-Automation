@@ -177,6 +177,63 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 `config/config.yaml` の `ending` セクションで、機能の有効化、3〜8秒の長さ、参照テキスト上限、画像選択（`first` / `random` / `sequence`）、本編への自動結合を設定できます。`auto_append: true`では動画レンダリング後に`main.mp4`、`ending.mp4`、`final.mp4`を作成します。YouTube投稿時は`final.mp4`を最優先で使用します。
 
+## テンプレート共通BGM
+
+テンプレートの`video.yaml`にBGMを記述し、音源はテンプレート配下に配置します。対応形式は`.mp3`、`.wav`、`.m4a`、`.aac`、`.ogg`です。
+
+```yaml
+bgm:
+  enabled: true
+  file: bgm/history.mp3
+  volume: 0.08
+  loop: true
+  fade_in: 1.0
+  fade_out: 2.0
+  missing_file_behavior: fallback # fallback / disable / error
+  main:
+    volume: 0.08
+  ending:
+    volume: 0.12
+    fade_in: 0.5
+```
+
+個別設定がない用途は共通値を継承します。BGMの優先順位は、テンプレート固有、`default`テンプレート、`config/config.yaml`のグローバル設定、BGMなしです。テンプレート側で`enabled: false`を指定した場合はフォールバックしません。音源ファイルまたは設定が変わると、エンディングのキャッシュキーも変わります。
+
+```powershell
+.\run.cmd bgm show --template history
+.\run.cmd bgm list
+.\run.cmd bgm validate --template history
+.\run.cmd bgm validate-all
+```
+
+既定の`per_section`では、本編とエンディングをそれぞれBGM付きでレンダリングしてから結合します。連続再生が必要な場合は、以下の`final_mix`を選択してください。
+
+## 最終BGMミックス（final_mix）
+
+既定の`per_section`は本編・エンディングごとにBGMをミックスする互換モードです。`final_mix`では両方をナレーション付き・BGMなしで生成してから結合し、全尺へBGMを一度だけ重ねます。そのため本編からエンディングへの移行時もBGMの再生位置はリセットされません。
+
+```yaml
+bgm:
+  render_mode: final_mix
+  file: bgm/history.mp3
+  final:
+    volume: 0.08
+    loop: true
+    fade_in: 1.0
+    fade_out: 2.0
+
+final_render:
+  keep_intermediate: true
+```
+
+`combined_without_bgm.mp4`は中間ファイルです。`final_render.keep_intermediate`を`false`にすると、`final.mp4`作成後に削除します。最終ミックスはmain・ending・BGM・エンコード設定の内容ハッシュでキャッシュするため、BGM変更時はmain／endingを再生成せずfinalだけを再作成します。
+
+```powershell
+.\run.cmd render final <job_id>
+.\run.cmd render remix-bgm <job_id>
+.\run.cmd render final <job_id> --force
+```
+
 ## YouTubeへ投稿する
 
 動画生成と投稿は分離されており、投稿は明示した場合だけ実行されます。
