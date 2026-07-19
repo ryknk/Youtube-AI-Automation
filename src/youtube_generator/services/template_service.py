@@ -40,6 +40,24 @@ class TemplateManager:
         template = self.get(template_id)
         return self._templates_dir / template.template_id
 
+    def ending_subtitles_enabled(self, template_id: str | None = None, default: bool = True) -> bool:
+        """テンプレートのエンディング字幕表示設定。未指定時はdefault、最終的にtrue。"""
+        template = self.get(template_id)
+        value = self._ending_subtitle_value(template)
+        if value is None and template.template_id != "default":
+            value = self._ending_subtitle_value(self.get("default"))
+        return default if value is None else value
+
+    @staticmethod
+    def _ending_subtitle_value(template: VideoTemplate) -> bool | None:
+        ending = (template.video_settings or {}).get("ending")
+        if not isinstance(ending, dict):
+            return None
+        subtitles = ending.get("subtitles")
+        if not isinstance(subtitles, dict) or "enabled" not in subtitles:
+            return None
+        return bool(subtitles["enabled"])
+
     @staticmethod
     def _load_directory(template_id: str, template_dir: Path) -> VideoTemplate:
         required_files = ("prompt.txt", "image_prompt.txt", "title_prompt.txt", "thumbnail_prompt.txt", "video.yaml")

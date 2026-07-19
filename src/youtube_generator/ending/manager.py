@@ -34,6 +34,7 @@ class EndingSettings:
     max_duration: float = 8.0
     max_reference_text_chars: int = 10_000
     image_mode: str = "sequence"
+    subtitles_enabled: bool = True
 
     @classmethod
     def from_config(cls, values: object) -> "EndingSettings":
@@ -45,6 +46,7 @@ class EndingSettings:
             max_duration=float(data.get("max_duration", 8)),
             max_reference_text_chars=int(data.get("max_reference_text_chars", 10_000)),
             image_mode=str(data.get("image_mode", "sequence")).lower(),
+            subtitles_enabled=bool((data.get("subtitles", {}) or {}).get("enabled", True)) if isinstance(data.get("subtitles", {}), dict) else True,
         )
         if settings.min_duration <= 0 or settings.max_duration < settings.min_duration:
             raise ValueError("ending の秒数設定が不正です。")
@@ -136,6 +138,9 @@ class EndingManager:
             self._logger.info("エンディングは無効です: template=%s", template_id)
             return None
         template = self._templates.get(template_id)
+        subtitles_enabled = self._templates.ending_subtitles_enabled(
+            template.template_id, default=self._settings.subtitles_enabled
+        )
         materials = self.collect_materials(template.template_id)
         cache_key = self._cache_key(template, materials)
         asset_dir = self._generated_root / template.template_id
@@ -164,10 +169,15 @@ class EndingManager:
         script_file.write_text(narration + "\n", encoding="utf-8")
         self._tts_provider.generate_speech(narration, audio_file)
         duration = self._duration_provider.get_duration_seconds(audio_file)
-        subtitle_file.write_text(self._subtitle_builder.build((SubtitleCue(narration, duration),)), encoding="utf-8")
+        if subtitles_enabled:
+            self._logger.info("エンディング字幕を生成します: template=%s", template.template_id)
+            subtitle_file.write_text(self._subtitle_builder.build((SubtitleCue(narration, duration),)), encoding="utf-8")
+        else:
+            self._logger.info("Ending subtitles disabled by template configuration: template=%s", template.template_id)
+            subtitle_file.unlink(missing_ok=True)
         selected_images = self._select_images(materials.image_files, cache_key)
         self._renderer_for(template.template_id).render(
-            EndingRenderRequest(audio_file, subtitle_file, selected_images, video_file, duration)
+            EndingRenderRequest(audio_file, subtitle_file if subtitles_enabled else None, selected_images, video_file, duration)
         )
         report = self._quality_checker.check_ending(
             narration, self._settings.min_duration, self._settings.max_duration, audio_file, video_file
@@ -182,7 +192,7 @@ class EndingManager:
             "duration_seconds": duration,
             "settings": asdict(self._settings),
         }, ensure_ascii=False, indent=2), encoding="utf-8")
-        files = (video_file, audio_file, subtitle_file, script_file, metadata_file)
+        files = tuple(file for file in (video_file, audio_file, subtitle_file, script_file, metadata_file) if file.is_file())
         if self._cache is not None:
             self._cache.save_files(cache_key, "ending", files)
         self._logger.info("エンディング生成を終了しました: template=%s", template.template_id)
@@ -238,6 +248,7 @@ class EndingManager:
         digest.update(materials.reference_text.encode("utf-8"))
         digest.update(json.dumps(asdict(self._settings), sort_keys=True).encode("utf-8"))
         digest.update(self._settings_fingerprint.encode("utf-8"))
+        digest.update(str(self._templates.ending_subtitles_enabled(template.template_id, default=self._settings.subtitles_enabled)).encode("utf-8"))
         if self._asset_fingerprint_for_template is not None:
             digest.update(self._asset_fingerprint_for_template(template.template_id).encode("utf-8"))
         for image in materials.image_files:
@@ -248,7 +259,7 @@ class EndingManager:
     def _load_existing(self, template_id: str, directory: Path, cache_key: str) -> EndingAsset | None:
         required = {
             "video": directory / "ending.mp4", "audio": directory / "ending_audio.mp3",
-            "subtitle": directory / "ending_subtitle.srt", "script": directory / "ending_script.txt",
+            "script": directory / "ending_script.txt",
             "metadata": directory / "metadata.json",
         }
         if not all(path.is_file() and path.stat().st_size > 0 for path in required.values()):
@@ -259,7 +270,7 @@ class EndingManager:
             return None
         if metadata.get("cache_key") != cache_key:
             return None
-        return EndingAsset(template_id, directory, required["video"], required["audio"], required["subtitle"], required["script"], required["metadata"], cache_key, True)
+        return EndingAsset(template_id, directory, required["video"], required["audio"], directory / "ending_subtitle.srt", required["script"], required["metadata"], cache_key, True)
 
     def _select_images(self, images: tuple[Path, ...], cache_key: str) -> tuple[Path, ...]:
         if not images:

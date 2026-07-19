@@ -11,7 +11,7 @@ from youtube_generator.infrastructure.ffmpeg_video_renderer import VideoRenderSe
 @dataclass(frozen=True, slots=True)
 class EndingRenderRequest:
     audio_file: Path
-    subtitle_file: Path
+    subtitle_file: Path | None
     image_files: tuple[Path, ...]
     output_file: Path
     duration_seconds: float
@@ -92,6 +92,9 @@ class FfmpegEndingRenderer:
         else:
             concat_inputs = "".join(f"[v{index}]" for index in range(image_count))
             parts.append(f"{concat_inputs}concat=n={image_count}:v=1:a=0[visual]")
+        if request.subtitle_file is None:
+            parts.append("[visual]null[video]")
+            return self._audio_filters(parts, audio_index)
         subtitle_path = self._escape_path(request.subtitle_file)
         style = (
             f"FontName={self._escape_style(self._settings.subtitle_font)},"
@@ -99,7 +102,9 @@ class FfmpegEndingRenderer:
             f"PrimaryColour={self._escape_style(self._settings.subtitle_color)}"
         )
         parts.append(f"[visual]subtitles=filename='{subtitle_path}':charenc=UTF-8:force_style='{style}'[video]")
-        audio_index = image_count
+        return self._audio_filters(parts, audio_index)
+
+    def _audio_filters(self, parts: list[str], audio_index: int) -> str:
         if self._settings.bgm_enabled and self._settings.bgm_file.is_file():
             fade_in = min(self._settings.bgm_fade_in, request.duration_seconds)
             fade_out = min(self._settings.bgm_fade_out, request.duration_seconds)

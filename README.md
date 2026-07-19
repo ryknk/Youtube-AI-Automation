@@ -236,6 +236,19 @@ final_render:
 .\run.cmd render final <job_id> --force
 ```
 
+## テンプレート別エンディング字幕
+
+`video.yaml` の設定で、エンディングだけの字幕表示を切り替えられます。本編字幕設定とは独立しています。未指定時は`config/config.yaml`の`ending.subtitles.enabled`を利用します。
+
+```yaml
+ending:
+  enabled: true
+  subtitles:
+    enabled: false
+```
+
+この設定でもエンディング映像とナレーションは生成され、字幕焼き込みだけを省略します。設定変更時はエンディングと最終結合のみが再生成対象です。
+
 ## YouTubeへ投稿する
 
 動画生成と投稿は分離されており、投稿は明示した場合だけ実行されます。

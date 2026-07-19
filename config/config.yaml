@@ -147,6 +147,8 @@ cache:
 # テンプレートごとに再利用する共通エンディング設定
 ending:
   enabled: true
+  subtitles:
+    enabled: false
   auto_append: true
   min_duration: 3
   max_duration: 8
