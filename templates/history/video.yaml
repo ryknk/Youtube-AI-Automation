@@ -1,2 +1,11 @@
 display_name: 歴史
 scene_structure: [時代背景, 出来事の発端, 展開, 影響とまとめ]
+bgm:
+  enabled: false
+  render_mode: per_section
+  file: assets/bgm.mp3
+  volume: 0.08
+  loop: true
+  fade_in: 1.0
+  fade_out: 2.0
+  missing_file_behavior: fallback

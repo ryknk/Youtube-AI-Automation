@@ -72,8 +72,8 @@ bgm:
   default_file: assets/bgm.mp3
   default_volume: 0.15
   loop: true
-  fade_in: 0.0
-  fade_out: 0.0
+  fade_in: 1.0
+  fade_out: 2.0
   missing_file_behavior: fallback
   # per_section: 本編・エンディング別にミックス / final_mix: 最終段階で一度だけミックス
   render_mode: per_section
@@ -92,7 +92,7 @@ subtitles:
   # 字幕に使用するフォント
   font: Arial
   # 字幕の文字サイズ
-  size: 36
+  size: 24
   # 字幕色（ASS形式）
   color: "&H00FFFFFF"
   segmentation_mode: semantic

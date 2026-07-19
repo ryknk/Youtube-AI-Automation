@@ -1,2 +1,11 @@
 display_name: 雑学
 scene_structure: [導入, 意外な事実, 詳しい解説, まとめ]
+bgm:
+  enabled: false
+  render_mode: per_section
+  file: assets/bgm.mp3
+  volume: 0.08
+  loop: true
+  fade_in: 1.0
+  fade_out: 2.0
+  missing_file_behavior: fallback
