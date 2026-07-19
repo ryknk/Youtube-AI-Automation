@@ -39,13 +39,51 @@ OpenAIは台本・シーン分割・音声・メタデータ生成、Black Fores
 - 音声、字幕、BGM、品質検査、キャッシュ、リトライ
 - YouTubeの公開範囲とアップロード許可
 
-ジャンルごとの台本・画像・タイトル・サムネイル方針は`templates/<template_id>/`で管理します。各テンプレートには`prompt.txt`、`image_prompt.txt`、`title_prompt.txt`、`thumbnail_prompt.txt`、`video.yaml`があります。
+`python main.py`の代わりに、セットアップ時に登録される`youtube-ai-automation`コマンドも使用できます。ただし、`queue`と`youtube`のサブコマンドは`python main.py`から実行してください。
 
-利用可能なテンプレートは次のコマンドで確認できます。
+## テンプレート機能
+
+テンプレートは、動画ジャンルごとの生成方針とシーン構成を切り替える機能です。`--template <テンプレートID>`で選択し、省略時は`default`が使用されます。
+
+```powershell
+python main.py --theme "宇宙の不思議" --template science
+```
+
+同梱テンプレート：
+
+| テンプレートID | 表示名 | 主な用途 |
+| --- | --- | --- |
+| `default` | Default | 汎用 |
+| `zatsugaku` | 雑学 | 雑学・豆知識 |
+| `history` | 歴史 | 歴史上の人物・出来事 |
+| `toshidensetsu` | 都市伝説 | 噂・都市伝説の紹介と検証 |
+| `psychology` | 心理学 | 心理学の解説と実践例 |
+| `science` | 科学 | 科学知識・現象の解説 |
+
+`trivia`は`zatsugaku`、`urban_legend`は`toshidensetsu`の別名としても使用できます。利用可能なテンプレートは次のコマンドで確認できます。
 
 ```powershell
 python main.py --list-templates
 ```
+
+テンプレートは`templates/<テンプレートID>/`に配置し、次の5ファイルで構成します。
+
+| ファイル | 用途 |
+| --- | --- |
+| `prompt.txt` | 台本の文体、内容、構成に関する指示 |
+| `image_prompt.txt` | シーン画像の画風と表現方針 |
+| `title_prompt.txt` | タイトル・概要欄・タグの生成方針 |
+| `thumbnail_prompt.txt` | サムネイルの構図と表現方針 |
+| `video.yaml` | 表示名とシーン構成 |
+
+新しいテンプレートを追加する場合は、既存フォルダを複製して上記ファイルを編集します。`video.yaml`には少なくとも表示名とシーン構成を指定してください。
+
+```yaml
+display_name: 料理
+scene_structure: [導入, 材料, 調理手順, まとめ]
+```
+
+フォルダ名が`cooking`の場合は、`--template cooking`で選択できます。`display_name`はジャンル名として出力フォルダの階層に使用されます。
 
 ## ジョブキューで動画を生成する
 
@@ -58,7 +96,7 @@ python main.py queue status
 ジョブは登録順に1件ずつ処理されます。成果物は次の構成で保存されます。
 
 ```text
-output/<ジャンル名>/<実行ID>_<テンプレート名>_<入力テーマ>/
+output/<ジャンル名>/<実行ID>_<入力テーマ>/
 ├── script/
 ├── audio/
 ├── images/
@@ -68,6 +106,8 @@ output/<ジャンル名>/<実行ID>_<テンプレート名>_<入力テーマ>/
 ├── metadata/
 └── quality_report/
 ```
+
+ジャンル別の階層を使用しない`output/jobs`直下へ保存する場合は、`output/jobs/<実行ID>_<ジャンル名>_<入力テーマ>/`という形式になります。
 
 その他のキュー操作：
 
@@ -80,25 +120,39 @@ python main.py queue cancel <job_id>
 
 CSVは`theme,template`ヘッダー、JSONは`theme`と`template`を持つオブジェクトの配列を使用します。
 
-## 工程ごとに実行する
+## キューを使わずに1件実行する
 
-台本生成：
+キューを使用しない場合は、対象動画の各工程を順番に実行します。まず台本を生成します。
 
 ```powershell
 python main.py --theme "宇宙の不思議" --template science
 ```
 
-生成された台本は`output/<ジャンル名>/<実行ID>_<テンプレート名>_<入力テーマ>/script.txt`へ保存されます。以降は同じ作業フォルダを指定して各工程を実行します。
+生成された台本は`output/<ジャンル名>/<実行ID>_<入力テーマ>/script.txt`へ保存されます。直前に作成されたフォルダをPowerShell変数へ設定し、残りの工程を実行します。
 
 ```powershell
-python main.py --split-script <作業フォルダ>\script.txt --template science
-python main.py --generate-audio <作業フォルダ> --template science
-python main.py --generate-images <作業フォルダ> --template science
-python main.py --generate-subtitles <作業フォルダ> --template science
-python main.py --generate-video <作業フォルダ> --template science
-python main.py --generate-metadata <作業フォルダ> --template science
-python main.py --generate-thumbnail <作業フォルダ> --template science
+$workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+
+python main.py --split-script "$workDir\script.txt" --template science
+python main.py --generate-audio "$workDir" --template science
+python main.py --generate-images "$workDir" --template science
+python main.py --generate-subtitles "$workDir" --template science
+python main.py --generate-video "$workDir" --template science
+python main.py --generate-metadata "$workDir" --template science
+python main.py --generate-thumbnail "$workDir" --template science
 ```
+
+`--template`には台本生成時と同じIDを指定してください。テンプレートが異なると、画像・タイトル・サムネイルの生成方針も変わります。`--theme`、`--split-script`、各`--generate-*`は同時指定できないため、工程ごとに個別実行します。
+
+台本、シーン分割、音声、画像、メタデータ、サムネイルの生成では外部API利用料が発生します。字幕生成と動画レンダリングはローカルのFFmpegを使用します。
+
+既存の台本文だけをAPIなしで品質チェックする場合は、次のように実行します。
+
+```powershell
+python main.py --script "確認したい台本文" --template science
+```
+
+文字数、想定時間、禁止表現、重複文などが`config/config.yaml`の`quality`設定に基づいて検査されます。
 
 同じ入力と設定で生成した中間成果物は`cache/`から再利用されます。工程イベントは`logs/run_history.jsonl`、実行ごとの集計は`output/history.json`、アプリケーションログは`logs/application.log`へ保存されます。
 
