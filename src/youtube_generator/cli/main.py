@@ -30,6 +30,7 @@ from youtube_generator.services.quality_checker import QualityChecker, ScriptQua
 from youtube_generator.services.retry import RetryPolicy
 from youtube_generator.services.image_prompt_builder import ImagePromptBuilder
 from youtube_generator.services.srt_builder import SrtBuilder
+from youtube_generator.services.subtitle_splitter import SubtitleSettings, SubtitleSplitter
 from youtube_generator.services.template_service import TemplateManager
 from youtube_generator.services.video_settings import load_video_settings
 from youtube_generator.services.bgm_manager import BGMManager
@@ -309,6 +310,9 @@ def run() -> None:
             return
 
         if args.generate_subtitles:
+            subtitle_values = video_settings.values["subtitles"]
+            if not isinstance(subtitle_values, dict):
+                raise ValueError("config.yaml の subtitles 設定が不正です。")
             subtitle_inputs = tuple(sorted(args.generate_subtitles.glob("scene*.mp3"))) + tuple(
                 sorted(args.generate_subtitles.glob("scene*.txt"))
             )
@@ -323,6 +327,13 @@ def run() -> None:
                 subtitle_file = GenerateSubtitlesUseCase(
                     FfprobeAudioDurationProvider(settings.ffprobe_executable),
                     SrtBuilder(),
+                    SubtitleSplitter(SubtitleSettings(
+                        segmentation_mode=str(subtitle_values.get("segmentation_mode", "scene")),
+                        max_lines=int(subtitle_values.get("max_lines", 2)),
+                        max_chars_per_line=int(subtitle_values.get("max_chars_per_line", 20)),
+                        min_chars_per_segment=int(subtitle_values.get("min_chars_per_segment", 6)),
+                    )),
+                    timing_mode=str(subtitle_values.get("timing_mode", "character_ratio")),
                 ).execute(args.generate_subtitles)
                 if cache_manager is not None:
                     cache_manager.save_files(subtitle_cache_key, "subtitle", (subtitle_file,))

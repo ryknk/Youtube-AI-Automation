@@ -95,6 +95,16 @@ subtitles:
   size: 36
   # 字幕色（ASS形式）
   color: "&H00FFFFFF"
+  segmentation_mode: semantic
+  max_lines: 2
+  max_chars_per_line: 20
+  min_chars_per_segment: 6
+  # alignment: sceneNN.alignment.json を優先。未配置・不正時は character_ratio へフォールバック
+  timing_mode: alignment
+  fallback_timing_mode: character_ratio
+  position: bottom
+  alignment: center
+  bottom_margin: 80
 
 # YouTubeメタデータ生成の設定
 metadata:
