@@ -1,0 +1,69 @@
+"""ジョブキューCLI。"""
+
+import argparse
+from pathlib import Path
+
+from youtube_generator.config import load_settings
+from youtube_generator.jobs.manager import JobManager
+from youtube_generator.jobs.pipeline import ExistingPipelineRunner
+from youtube_generator.logger import configure_logging, get_logger
+from youtube_generator.services.video_settings import load_video_settings
+from youtube_generator.services.template_service import TemplateManager
+from youtube_generator.app.generate_script import GenerateScriptUseCase
+
+
+def run_queue(arguments: list[str]) -> None:
+    parser = argparse.ArgumentParser(prog="main.py queue")
+    subcommands = parser.add_subparsers(dest="command", required=True)
+    add = subcommands.add_parser("add")
+    add.add_argument("theme")
+    add.add_argument("--template", default="default")
+    import_command = subcommands.add_parser("import")
+    import_command.add_argument("source", type=Path)
+    subcommands.add_parser("list")
+    subcommands.add_parser("run")
+    subcommands.add_parser("status")
+    retry = subcommands.add_parser("retry")
+    retry.add_argument("job_id")
+    cancel = subcommands.add_parser("cancel")
+    cancel.add_argument("job_id")
+    args = parser.parse_args(arguments)
+
+    settings = load_settings()
+    configure_logging(settings.log_level, settings.log_dir)
+    logger = get_logger(__name__)
+    templates = TemplateManager(settings.templates_dir)
+
+    def output_directory(theme: str, template_id: str, job_id: str) -> Path:
+        template = templates.get(template_id)
+        return GenerateScriptUseCase.output_directory(settings.output_dir, theme, template, job_id)
+
+    manager = JobManager(
+        settings.data_dir / "jobs.db", settings.output_dir,
+        output_directory_factory=output_directory,
+    )
+
+    if args.command == "add":
+        job = manager.add(args.theme, args.template)
+        print(job.job_id)
+    elif args.command == "import":
+        print(f"{len(manager.import_file(args.source))} 件登録しました。")
+    elif args.command in ("list", "status"):
+        for job in manager.list():
+            print(f"{job.job_id} | {job.status} | {job.stage or '-'} | {job.template} | {job.theme}")
+    elif args.command == "retry":
+        print(manager.retry(args.job_id).job_id)
+    elif args.command == "cancel":
+        print(manager.cancel(args.job_id).job_id)
+    elif args.command == "run":
+        queue_settings = load_video_settings(settings.config_dir / "config.yaml").values["queue"]
+        if not isinstance(queue_settings, dict):
+            raise ValueError("config.yaml の queue 設定が不正です。")
+        def processor(job, update_stage):  # type: ignore[no-untyped-def]
+            logger.info("job_id=%s: ジョブを開始します。", job.job_id)
+            def logged_update(stage):  # type: ignore[no-untyped-def]
+                logger.info("job_id=%s: 工程=%s", job.job_id, stage.value)
+                update_stage(stage)
+            ExistingPipelineRunner()(job, logged_update)
+            logger.info("job_id=%s: ジョブを完了しました。", job.job_id)
+        manager.run_pending(processor, stop_on_error=bool(queue_settings["stop_on_error"]))

@@ -1,0 +1,131 @@
+# 最終動画の出力設定
+video:
+  # 動画の横幅（ピクセル）
+  width: 1920
+  # 動画の高さ（ピクセル）
+  height: 1080
+  # 動画のフレームレート
+  fps: 30
+  # 動画の出力形式
+  output_format: mp4
+
+# 機能ごとに使用するプロバイダー
+providers:
+  # 台本・シーン分割・メタデータ生成のプロバイダー
+  text: openai
+  # 音声合成のプロバイダー
+  tts: openai
+  # 画像生成のプロバイダー
+  image: bfl
+
+# テキスト生成モデルの設定
+text:
+  # 台本生成に使用するモデル
+  script_model: gpt-5.6
+  # 台本のシーン分割に使用するモデル
+  scene_split_model: gpt-5.6
+  # タイトル・説明文などのメタデータ生成に使用するモデル
+  metadata_model: gpt-5.6
+
+# 画像生成の共通設定（表現方針は各テンプレートで定義）
+image:
+  # 1動画で生成するシーン画像の最大枚数
+  max_count: 20
+  # シーン画像の生成に使用するモデル
+  scene_model: flux-2-pro
+  # サムネイル画像の生成に使用する高品質モデル
+  thumbnail_model: flux-2-max
+  # OpenAI画像プロバイダーへ戻した場合に使用するモデル
+  openai_model: gpt-image-2
+  # シーン画像の生成サイズ
+  scene_size: 1920x1080
+  # サムネイル画像の生成サイズ
+  thumbnail_size: 1280x720
+  # OpenAI画像プロバイダーへ戻した場合の生成品質
+  quality: high
+
+# 台本のシーン分割設定
+scenes:
+  # 台本分割時の最大シーン数
+  max_count: 30
+
+# ナレーション音声の設定
+audio:
+  # 音声合成に使用するモデル
+  model: gpt-4o-mini-tts
+  # 読み上げ音声
+  voice: alloy
+  # 読み上げ速度
+  speed: 1.0
+  # 音声合成モデルへの読み上げ指示
+  instructions: 自然で聞き取りやすい日本語ナレーションとして話してください。
+
+# BGMの設定
+bgm:
+  # BGMを動画へ追加するか
+  enabled: false
+  # BGMファイルのパス
+  path: assets/bgm.mp3
+  # BGMの音量
+  volume: 0.15
+
+# 字幕表示の設定
+subtitles:
+  # 字幕に使用するフォント
+  font: Arial
+  # 字幕の文字サイズ
+  size: 36
+  # 字幕色（ASS形式）
+  color: "&H00FFFFFF"
+
+# YouTubeメタデータ生成の設定
+metadata:
+  # 生成するタイトル候補数
+  title_count: 10
+
+# 台本および動画素材の品質チェック設定
+quality:
+  # 台本の最小文字数
+  min_characters: 1000
+  # 台本の最大文字数
+  max_characters: 4000
+  # 動画時間の推定に使用する1秒あたりの文字数
+  characters_per_second: 6.0
+  # 台本で使用を禁止する表現
+  forbidden_words:
+    - 必ず儲かる
+    - 絶対に治る
+  # 同一文を重複と判定する出現回数
+  duplicate_sentence_threshold: 2
+
+# 外部APIへのリトライ設定
+retry:
+  # API呼び出しの最大試行回数
+  max_attempts: 5
+  # 最初の再試行までの待機秒数
+  initial_wait_seconds: 1.0
+  # 再試行間隔に掛ける倍率
+  backoff_multiplier: 2.0
+  # API呼び出しのタイムアウト秒数
+  timeout_seconds: 60
+
+# 生成済み成果物のキャッシュ設定
+cache:
+  # キャッシュを使用するか
+  enabled: true
+  # キャッシュを保持する日数
+  expiration_days: 30
+
+# ジョブキューの設定
+queue:
+  # 1件の失敗時に後続ジョブの処理も停止するか
+  stop_on_error: false
+
+# YouTubeアップロードの設定
+youtube:
+  # 動画の既定公開範囲
+  default_privacy: private
+  # YouTubeのカテゴリID
+  category_id: 22
+  # 実際のYouTubeアップロードを許可するか
+  upload_enabled: false

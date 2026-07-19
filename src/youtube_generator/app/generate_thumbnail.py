@@ -1,0 +1,34 @@
+"""台本からYouTubeサムネイル画像を生成するユースケース。"""
+
+from pathlib import Path
+
+from youtube_generator.plugins.base.image_provider import ImageProvider
+
+
+class GenerateThumbnailUseCase:
+    """プロジェクトの台本を基にthumbnail.pngを生成する。"""
+
+    def __init__(self, image_generator: ImageProvider, thumbnail_instruction: str) -> None:
+        self._image_generator = image_generator
+        self._thumbnail_instruction = thumbnail_instruction
+
+    def execute(self, project_dir: Path) -> Path:
+        script_file = project_dir / "script.txt"
+        if not script_file.is_file():
+            raise FileNotFoundError(f"script.txt が見つかりません: {project_dir}")
+        script = script_file.read_text(encoding="utf-8").strip()
+        if not script:
+            raise ValueError("サムネイル生成に使用する台本が空です。")
+
+        prompt = (
+            "Use case: YouTube thumbnail.\n"
+            f"Primary request: Create a compelling visual that summarizes this Japanese video script: {script[:2000]}\n"
+            f"Template-specific direction: {self._thumbnail_instruction}\n"
+            "Style/medium: high-detail professional thumbnail artwork.\n"
+            "Composition/framing: 16:9 landscape, one instantly recognizable focal subject, "
+            "bold composition, strong contrast, clear at small display sizes.\n"
+            "Constraints: no text, no subtitles, no logos, no watermark."
+        )
+        output_file = project_dir / "thumbnail.png"
+        self._image_generator.generate_image(prompt, output_file)
+        return output_file

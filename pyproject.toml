@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "youtube-video-generator"
+version = "0.1.0"
+description = "AIを利用したYouTube動画自動生成ツール"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.10,<3.0",
+    "pydantic-settings>=2.7,<3.0",
+    "openai>=2.0,<3.0",
+    "PyYAML>=6.0,<7.0",
+    "google-api-python-client>=2.0,<3.0",
+    "google-auth-oauthlib>=1.2,<2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9.0",
+    "pytest-cov>=5.0,<7.0",
+    "pytest-mock>=3.14,<4.0",
+]
+
+[project.scripts]
+youtube-video-generator = "youtube_generator.cli.main:run"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "unit: isolated unit test with no external service",
+    "integration: multi-module test with mocked external dependencies",
+    "slow: test that is comparatively slow",
+    "external: opt-in test that may contact an external service",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["youtube_generator"]

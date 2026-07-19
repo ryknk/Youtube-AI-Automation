@@ -1,0 +1,14 @@
+video: {width: 320, height: 180, fps: 1, output_format: mp4}
+providers: {text: openai, tts: openai, image: bfl}
+text: {script_model: gpt-5.6, scene_split_model: gpt-5.6, metadata_model: gpt-5.6}
+audio: {model: gpt-4o-mini-tts, voice: alloy, speed: 1.0, instructions: test}
+image: {max_count: 2, scene_model: flux-2-pro, thumbnail_model: flux-2-max, openai_model: gpt-image-2, scene_size: 320x180, thumbnail_size: 320x180, quality: low}
+scenes: {max_count: 2}
+bgm: {enabled: false, path: assets/bgm.mp3, volume: 0.15}
+subtitles: {font: Arial, size: 24, color: "&H00FFFFFF"}
+metadata: {title_count: 2}
+quality: {min_characters: 10, max_characters: 100, characters_per_second: 6.0, forbidden_words: [], duplicate_sentence_threshold: 2}
+retry: {max_attempts: 1, initial_wait_seconds: 1.0, backoff_multiplier: 2.0, timeout_seconds: 10}
+cache: {enabled: false, expiration_days: 1}
+queue: {stop_on_error: false}
+youtube: {default_privacy: private, category_id: 22, upload_enabled: false}
