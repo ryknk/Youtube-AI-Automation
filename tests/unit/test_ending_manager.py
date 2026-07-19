@@ -52,11 +52,11 @@ def _write_template(root: Path, template_id: str = "science", with_image: bool =
     (directory / "image_prompt.txt").write_text("realistic science", encoding="utf-8")
     (directory / "title_prompt.txt").write_text("短いタイトル", encoding="utf-8")
     (directory / "thumbnail_prompt.txt").write_text("明るい表紙", encoding="utf-8")
-    (directory / "extra.txt").write_text("視聴者にやさしく呼びかけます。", encoding="utf-8")
+    (directory / "ending_message.txt").write_text("視聴者にやさしく呼びかけます。", encoding="utf-8")
     (directory / "video.yaml").write_text("display_name: 科学\nscene_structure: [導入]\n", encoding="utf-8")
     if with_image:
         (directory / "nested").mkdir()
-        (directory / "nested" / "logo.png").write_bytes(b"image")
+        (directory / "nested" / "ending_logo.png").write_bytes(b"image")
     return directory
 
 
@@ -79,9 +79,10 @@ def test_collects_all_text_and_images_recursively(tmp_path):
 
     materials = manager.collect_materials("science")
 
-    assert len(materials.text_files) == 5
+    assert len(materials.text_files) == 1
     assert len(materials.image_files) == 1
-    assert "親しみやすい" in materials.reference_text
+    assert "視聴者にやさしく" in materials.reference_text
+    assert "親しみやすい" not in materials.reference_text
 
 
 def test_generates_and_reuses_cached_ending(tmp_path):
@@ -109,7 +110,7 @@ def test_no_images_is_not_an_error_and_force_regenerates(tmp_path):
 def test_material_change_invalidates_existing_ending(tmp_path):
     manager, generator, _, templates_root = _manager(tmp_path)
     manager.ensure("science")
-    (templates_root / "science" / "extra.txt").write_text("新しい方針です。", encoding="utf-8")
+    (templates_root / "science" / "ending_message.txt").write_text("新しい方針です。", encoding="utf-8")
 
     manager.ensure("science")
 

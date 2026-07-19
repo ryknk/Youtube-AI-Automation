@@ -78,6 +78,7 @@ class EndingManager:
 
     _TEXT_SUFFIXES = {".txt"}
     _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+    _MATERIAL_PREFIX = "ending"
 
     def __init__(
         self,
@@ -108,8 +109,14 @@ class EndingManager:
 
     def collect_materials(self, template_id: str) -> TemplateMaterials:
         template_dir = self._templates.directory_for(template_id)
-        text_files = tuple(sorted((path for path in template_dir.rglob("*") if path.is_file() and path.suffix.lower() in self._TEXT_SUFFIXES), key=lambda item: str(item).lower()))
-        image_files = tuple(sorted((path for path in template_dir.rglob("*") if path.is_file() and path.suffix.lower() in self._IMAGE_SUFFIXES), key=lambda item: str(item).lower()))
+        text_files = tuple(sorted((
+            path for path in template_dir.rglob("*")
+            if self._is_ending_material(path, self._TEXT_SUFFIXES)
+        ), key=lambda item: str(item).lower()))
+        image_files = tuple(sorted((
+            path for path in template_dir.rglob("*")
+            if self._is_ending_material(path, self._IMAGE_SUFFIXES)
+        ), key=lambda item: str(item).lower()))
         remaining = self._settings.max_reference_text_chars
         chunks: list[str] = []
         for file_path in text_files:
@@ -254,6 +261,15 @@ class EndingManager:
         if self._settings.image_mode == "random":
             return (random.Random(cache_key).choice(images),)
         return images
+
+    @classmethod
+    def _is_ending_material(cls, file_path: Path, extensions: set[str]) -> bool:
+        """`ending` で始まる対象拡張子のファイルだけを素材として採用する。"""
+        return (
+            file_path.is_file()
+            and file_path.suffix.lower() in extensions
+            and file_path.stem.lower().startswith(cls._MATERIAL_PREFIX)
+        )
 
     @staticmethod
     def _raise_if_invalid(report: ProjectQualityReport) -> None:

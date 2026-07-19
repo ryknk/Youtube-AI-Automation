@@ -165,7 +165,7 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 ## テンプレート共通エンディング
 
-各テンプレート配下を再帰的に検索し、`.txt`、`.png`、`.jpg`、`.jpeg`、`.webp`を共通エンディングの素材として利用します。テキストは口調・チャンネル方針の文脈、画像は背景やロゴ等として扱われます。生成結果は`generated_assets/endings/<template>/`に保存され、素材・TTS・動画・エンディング設定から計算したSHA-256ハッシュが一致する限り再利用されます。
+各テンプレート配下を再帰的に検索し、ファイル名が大文字・小文字を問わず`ending`で始まる`.txt`、`.png`、`.jpg`、`.jpeg`、`.webp`だけを共通エンディングの素材として利用します。たとえば`ending_message.txt`、`ending_logo.png`、`assets/ending_background.jpg`を配置できます。テキストは口調・チャンネル方針の文脈、画像は背景やロゴ等として扱われます。生成結果は`generated_assets/endings/<template>/`に保存され、素材・TTS・動画・エンディング設定から計算したSHA-256ハッシュが一致する限り再利用されます。
 
 ```powershell
 .\run.cmd ending generate --template zatsugaku
