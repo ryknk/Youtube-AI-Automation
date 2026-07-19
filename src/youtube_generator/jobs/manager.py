@@ -135,6 +135,28 @@ class JobManager:
         self._update(job_id, status=JobStatus.CANCELLED, stage=None)
         return self.get(job_id)
 
+    def delete(self, job_id: str) -> bool:
+        """指定ジョブをキューDBから削除する。成果物フォルダは保持する。"""
+        job = self.get(job_id)
+        if job.status is JobStatus.RUNNING:
+            raise ValueError("実行中のジョブは削除できません。")
+        with self._connect() as connection:
+            connection.execute("DELETE FROM youtube_uploads WHERE job_id=?", (job_id,))
+            cursor = connection.execute("DELETE FROM jobs WHERE job_id=?", (job_id,))
+        return cursor.rowcount == 1
+
+    def clear(self) -> int:
+        """実行中でないすべてのジョブをキューDBから削除する。"""
+        with self._connect() as connection:
+            running_count = connection.execute(
+                "SELECT COUNT(*) FROM jobs WHERE status=?", (JobStatus.RUNNING.value,)
+            ).fetchone()[0]
+            if running_count:
+                raise ValueError("実行中のジョブがあるためキューをクリアできません。")
+            connection.execute("DELETE FROM youtube_uploads")
+            cursor = connection.execute("DELETE FROM jobs")
+        return cursor.rowcount
+
     def retry(self, job_id: str) -> Job:
         job = self.get(job_id)
         if job.status not in (JobStatus.FAILED, JobStatus.CANCELLED):

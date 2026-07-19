@@ -82,6 +82,27 @@ class JobManagerTests(unittest.TestCase):
             self.assertEqual(manager.recover_interrupted(), 1)
             self.assertEqual(manager.get(job.job_id).status, JobStatus.PENDING)
 
+    def test_delete_removes_job_but_keeps_output_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            manager = JobManager(root / "jobs.db", root / "output")
+            job = manager.add("削除テスト", "default")
+
+            self.assertTrue(manager.delete(job.job_id))
+            self.assertTrue(job.output_dir.is_dir())
+            with self.assertRaises(KeyError):
+                manager.get(job.job_id)
+
+    def test_clear_removes_all_non_running_jobs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            manager = JobManager(root / "jobs.db", root / "output")
+            manager.add("テーマ1", "default")
+            manager.add("テーマ2", "history")
+
+            self.assertEqual(manager.clear(), 2)
+            self.assertEqual(manager.list(), ())
+
 
 if __name__ == "__main__":
     unittest.main()

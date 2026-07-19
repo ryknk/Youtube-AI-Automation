@@ -116,6 +116,9 @@ python main.py queue import topics.csv
 python main.py queue list
 python main.py queue retry <job_id>
 python main.py queue cancel <job_id>
+python main.py queue delete <job_id>
+python main.py queue clear
+python main.py queue clear --yes
 ```
 
 CSVは`theme,template`ヘッダー、JSONは`theme`と`template`を持つオブジェクトの配列を使用します。

@@ -27,6 +27,10 @@ def run_queue(arguments: list[str]) -> None:
     retry.add_argument("job_id")
     cancel = subcommands.add_parser("cancel")
     cancel.add_argument("job_id")
+    delete = subcommands.add_parser("delete")
+    delete.add_argument("job_id")
+    clear = subcommands.add_parser("clear")
+    clear.add_argument("--yes", action="store_true", help="確認を省略してキューを一括クリアする")
     args = parser.parse_args(arguments)
 
     settings = load_settings()
@@ -50,11 +54,23 @@ def run_queue(arguments: list[str]) -> None:
         print(f"{len(manager.import_file(args.source))} 件登録しました。")
     elif args.command in ("list", "status"):
         for job in manager.list():
-            print(f"{job.job_id} | {job.status} | {job.stage or '-'} | {job.template} | {job.theme}")
+            try:
+                genre_name = templates.get(job.template).display_name
+            except ValueError:
+                genre_name = job.template
+            print(f"{job.job_id} | {job.status} | {job.stage or '-'} | ジャンル: {genre_name} | テーマ: {job.theme}")
     elif args.command == "retry":
         print(manager.retry(args.job_id).job_id)
     elif args.command == "cancel":
         print(manager.cancel(args.job_id).job_id)
+    elif args.command == "delete":
+        manager.delete(args.job_id)
+        print(f"削除しました: {args.job_id}")
+    elif args.command == "clear":
+        if not args.yes and input("キュー内の全ジョブを削除します。Continue? [y/N] ").strip().lower() != "y":
+            print("キューのクリアを中止しました。")
+            return
+        print(f"{manager.clear()} 件のジョブを削除しました。")
     elif args.command == "run":
         queue_settings = load_video_settings(settings.config_dir / "config.yaml").values["queue"]
         if not isinstance(queue_settings, dict):
