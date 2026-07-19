@@ -1,4 +1,4 @@
-# YouTube Video Generator
+# Youtube AI Automation
 
 ## Testing
 
