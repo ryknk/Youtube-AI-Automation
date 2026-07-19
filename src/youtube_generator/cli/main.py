@@ -35,7 +35,7 @@ from youtube_generator.plugins.manager import PluginManager
 
 def create_parser() -> argparse.ArgumentParser:
     """CLI引数パーサーを作成する。"""
-    parser = argparse.ArgumentParser(description="AIを利用したYouTube動画自動生成ツール")
+    parser = argparse.ArgumentParser(description="Youtube AI Automation")
     input_group = parser.add_mutually_exclusive_group()
     input_group.add_argument("--theme", help="台本を生成する動画テーマ")
     input_group.add_argument("--split-script", type=Path, help="分割する script.txt のパス")
@@ -48,7 +48,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--template", default="default", help="テンプレートID（既定: default）")
     parser.add_argument("--list-templates", action="store_true", help="利用可能なテンプレートを表示して終了")
     parser.add_argument("--script", help="品質チェックする台本文。API生成後は生成台本を渡す想定です。")
-    parser.add_argument("--version", action="version", version="youtube-video-generator 0.1.0")
+    parser.add_argument("--version", action="version", version="Youtube AI Automation 0.1.0")
     parser.add_argument("--run-id", help=argparse.SUPPRESS)
     return parser
 

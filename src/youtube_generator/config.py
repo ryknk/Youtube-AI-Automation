@@ -18,7 +18,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "YouTube Video Generator"
+    app_name: str = "Youtube AI Automation"
     log_level: str = "INFO"
     output_dir: Path = Field(default=PROJECT_ROOT / "output")
     log_dir: Path = Field(default=PROJECT_ROOT / "logs")

@@ -1,3 +1,3 @@
-"""YouTube動画自動生成パッケージ。"""
+"""Youtube AI Automationパッケージ。"""
 
 __version__ = "0.1.0"

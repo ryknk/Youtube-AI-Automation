@@ -3,9 +3,9 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "youtube-video-generator"
+name = "youtube-ai-automation"
 version = "0.1.0"
-description = "AIを利用したYouTube動画自動生成ツール"
+description = "Youtube AI Automation"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -25,7 +25,7 @@ dev = [
 ]
 
 [project.scripts]
-youtube-video-generator = "youtube_generator.cli.main:run"
+youtube-ai-automation = "youtube_generator.cli.main:run"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
