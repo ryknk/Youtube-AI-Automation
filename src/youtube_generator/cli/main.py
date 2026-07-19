@@ -1,6 +1,7 @@
 """コマンドラインからアプリケーションを起動する。"""
 
 import argparse
+import hashlib
 import shutil
 import sys
 from dataclasses import replace
@@ -53,6 +54,7 @@ def create_parser() -> argparse.ArgumentParser:
     input_group.add_argument("--generate-metadata", type=Path, help="完成動画とscript.txtがあるフォルダのパス")
     input_group.add_argument("--generate-thumbnail", type=Path, help="script.txtがあるフォルダのパス")
     parser.add_argument("--template", default="default", help="テンプレートID（既定: default）")
+    parser.add_argument("--topic", help="メタデータ生成に使用する動画テーマ")
     parser.add_argument("--list-templates", action="store_true", help="利用可能なテンプレートを表示して終了")
     parser.add_argument("--script", help="品質チェックする台本文。API生成後は生成台本を渡す想定です。")
     parser.add_argument("--version", action="version", version="Youtube AI Automation 0.1.0")
@@ -116,6 +118,11 @@ def run() -> None:
                 logger.info("期限切れキャッシュを %d 件削除しました。", removed_count)
         logger.info("%s を起動しました。実行ID: %s", settings.app_name, run_id)
         logger.info("テンプレート: %s (%s)", template.display_name, template.template_id)
+        logger.info(
+            "title_prompt読み込み成功: template=%s, hash=%s",
+            template.template_id,
+            hashlib.sha256(template.title_instruction.encode("utf-8")).hexdigest(),
+        )
         logger.info("出力先: %s", settings.output_dir)
         logger.info("動画設定: %sx%s / %sfps", video_settings.values["video"]["width"], video_settings.values["video"]["height"], video_settings.values["video"]["fps"])
         if args.theme:
@@ -174,17 +181,34 @@ def run() -> None:
                 RetryPolicy.from_settings(retry_settings),
                 title_count=int(metadata_settings["title_count"]),
             )
-            metadata_cache_key = CacheManager.make_file_key(
-                "metadata", (args.generate_metadata / "script.txt",), video_settings.fingerprint
+            topic = (args.topic or "").strip()
+            if not topic:
+                logger.warning("動画テーマが未指定のため、タイトル生成でテーマを「未指定」として扱います。")
+            title_prompt = template.title_instruction
+            use_case = GenerateMetadataUseCase(generator)
+            cache_result = use_case.execute_cached(
+                args.generate_metadata, cache_manager,
+                fingerprint=video_settings.fingerprint, topic=topic,
+                template_id=template.template_id, template_name=template.display_name,
+                title_prompt=title_prompt,
             )
-            if cache_manager is not None and cache_manager.exists(metadata_cache_key, "metadata"):
-                metadata_files = cache_manager.restore_files(metadata_cache_key, "metadata", args.generate_metadata)
-                logger.info("メタデータをキャッシュから復元しました。")
-                history.record(run_id, "cache_hit", artifact="metadata", cache_key=metadata_cache_key)
-            else:
-                metadata_files = GenerateMetadataUseCase(generator).execute(args.generate_metadata)
-                if cache_manager is not None:
-                    cache_manager.save_files(metadata_cache_key, "metadata", metadata_files)
+            logger.info(
+                "タイトルキャッシュキー: %s (title_prompt_hash=%s)",
+                cache_result.titles_cache_key, cache_result.title_prompt_hash,
+            )
+            if cache_result.titles_cache_hit:
+                logger.info("タイトルをキャッシュから復元しました。")
+                history.record(
+                    run_id, "cache_hit", artifact="metadata_titles",
+                    cache_key=cache_result.titles_cache_key,
+                )
+            if cache_result.details_cache_hit:
+                logger.info("タイトル以外のメタデータをキャッシュから復元しました。")
+                history.record(
+                    run_id, "cache_hit", artifact="metadata_details",
+                    cache_key=cache_result.details_cache_key,
+                )
+            metadata_files = cache_result.files
             logger.info("%d件のメタデータファイルを保存しました。", len(metadata_files))
             history.record(run_id, "metadata_generated", file_count=len(metadata_files))
             history.record(run_id, "run_completed")

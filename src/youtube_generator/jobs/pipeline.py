@@ -53,7 +53,7 @@ class ExistingPipelineRunner:
         self._copy_matching(work_dir, "quality_report.*", job.output_dir / "quality_report")
 
         update_stage(JobStage.METADATA_GENERATION)
-        self._run("--generate-metadata", str(work_dir), "--template", job.template)
+        self._run(*self._metadata_arguments(job, work_dir))
         self._copy_matching(work_dir, "*.txt", job.output_dir / "metadata", exclude={"script.txt"})
 
         update_stage(JobStage.THUMBNAIL_GENERATION)
@@ -79,6 +79,14 @@ class ExistingPipelineRunner:
         if not candidates:
             raise RuntimeError("既存パイプラインのscript.txt出力を確認できませんでした。")
         return max(candidates, key=lambda path: path.stat().st_mtime)
+
+    @staticmethod
+    def _metadata_arguments(job: Job, work_dir: Path) -> tuple[str, ...]:
+        """ジョブのテーマとテンプレートをメタデータ工程へ渡す。"""
+        return (
+            "--generate-metadata", str(work_dir), "--template", job.template,
+            "--topic", job.theme,
+        )
 
     @staticmethod
     def _run(*arguments: str) -> None:

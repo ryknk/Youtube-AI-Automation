@@ -74,11 +74,13 @@ PowerShell 7など、問題が発生しない環境では`python main.py`また�
 | --- | --- |
 | `prompt.txt` | 台本の文体、内容、構成に関する指示 |
 | `image_prompt.txt` | シーン画像の画風と表現方針 |
-| `title_prompt.txt` | タイトル・概要欄・タグの生成方針 |
+| `title_prompt.txt` | YouTubeタイトル専用の生成方針 |
 | `thumbnail_prompt.txt` | サムネイルの構図と表現方針 |
 | `video.yaml` | 表示名とシーン構成 |
 
 新しいテンプレートを追加する場合は、既存フォルダを複製して上記ファイルを編集します。`video.yaml`には少なくとも表示名とシーン構成を指定してください。
+
+`title_prompt.txt`には、タイトルのトーン、煽りの強さ、キーワードの使い方、人物名や固有名詞を含めるか、答えをタイトルで明かすか、推奨構成などを記述できます。この方針はタイトルにのみ適用され、概要欄、タグ、ハッシュタグには適用されません。`title_prompt.txt`を変更するとタイトル用キャッシュだけが無効になり、次回のメタデータ生成時から新しい方針が反映されます。台本、音声、画像、動画とタイトル以外のメタデータは既存キャッシュを再利用します。
 
 ```yaml
 display_name: 料理
@@ -145,11 +147,11 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 .\run.cmd --generate-images "$workDir" --template science
 .\run.cmd --generate-subtitles "$workDir" --template science
 .\run.cmd --generate-video "$workDir" --template science
-.\run.cmd --generate-metadata "$workDir" --template science
+.\run.cmd --generate-metadata "$workDir" --template science --topic "宇宙の不思議"
 .\run.cmd --generate-thumbnail "$workDir" --template science
 ```
 
-`--template`には台本生成時と同じIDを指定してください。テンプレートが異なると、画像・タイトル・サムネイルの生成方針も変わります。`--theme`、`--split-script`、各`--generate-*`は同時指定できないため、工程ごとに個別実行します。
+`--template`には台本生成時と同じIDを指定してください。テンプレートが異なると、画像・タイトル・サムネイルの生成方針も変わります。メタデータ生成では、タイトル生成に動画テーマを反映するため`--topic`も指定してください。ジョブ実行時はジョブのテーマが自動的に渡されます。`--theme`、`--split-script`、各`--generate-*`は同時指定できないため、工程ごとに個別実行します。
 
 台本、シーン分割、音声、画像、メタデータ、サムネイルの生成では外部API利用料が発生します。字幕生成と動画レンダリングはローカルのFFmpegを使用します。
 
