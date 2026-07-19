@@ -14,14 +14,14 @@ class JobManagerTests(unittest.TestCase):
             manager = JobManager(
                 root / "jobs.db", root / "output",
                 output_directory_factory=lambda theme, template, job_id: (
-                    root / "output" / "雑学" / f"{job_id}_{template}_{theme}"
+                    root / "output" / "雑学" / f"{job_id}_{theme}"
                 ),
             )
 
             job = manager.add("宇宙", "trivia")
 
             self.assertEqual(job.output_dir.parent.name, "雑学")
-            self.assertEqual(job.output_dir.name, f"{job.job_id}_trivia_宇宙")
+            self.assertEqual(job.output_dir.name, f"{job.job_id}_宇宙")
 
     def test_add_import_and_run_in_creation_order(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
