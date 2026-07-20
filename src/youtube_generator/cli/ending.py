@@ -42,6 +42,9 @@ def create_ending_manager() -> EndingManager:
         subtitle_position=str(subtitles.get("position", "bottom")),
         subtitle_alignment=str(subtitles.get("alignment", "center")),
         subtitle_bottom_margin=int(subtitles.get("bottom_margin", 80)),
+        subtitle_box_enabled=bool(subtitles.get("box_enabled", False)),
+        subtitle_background_color=str(subtitles.get("background_color", "&H00000000")),
+        subtitle_background_opacity=float(subtitles.get("background_opacity", 0.6)),
     )
     cache_values = values["cache"]
     cache = CacheManager(settings.cache_dir) if isinstance(cache_values, dict) and bool(cache_values["enabled"]) else None
@@ -63,6 +66,13 @@ def create_ending_manager() -> EndingManager:
             subtitle_position=str(template_subtitles.get("position", "bottom")),
             subtitle_alignment=str(template_subtitles.get("alignment", "center")),
             subtitle_bottom_margin=int(template_subtitles.get("bottom_margin", 80)),
+            subtitle_box_enabled=bool(template_subtitles.get("box_enabled", False)),
+            subtitle_background_color=str(
+                template_subtitles.get("background_color", "&H00000000")
+            ),
+            subtitle_background_opacity=float(
+                template_subtitles.get("background_opacity", 0.6)
+            ),
         ))
 
     def asset_fingerprint_for_template(template_id: str) -> str:

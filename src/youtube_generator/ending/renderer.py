@@ -6,6 +6,7 @@ from pathlib import Path
 
 from youtube_generator.exceptions import VideoRenderingError
 from youtube_generator.infrastructure.ffmpeg_video_renderer import VideoRenderSettings
+from youtube_generator.services.subtitle_style import build_ass_subtitle_style
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,12 +99,16 @@ class FfmpegEndingRenderer:
             parts.append("[visual]null[video]")
             return self._audio_filters(parts, audio_index, request.duration_seconds)
         subtitle_path = self._escape_path(request.subtitle_file)
-        style = (
-            f"FontName={self._escape_style(self._settings.subtitle_font)},"
-            f"FontSize={self._settings.subtitle_size},"
-            f"PrimaryColour={self._escape_style(self._settings.subtitle_color)},"
-            f"Alignment={self._subtitle_alignment()},"
-            f"MarginV={self._settings.subtitle_bottom_margin}"
+        style = build_ass_subtitle_style(
+            font=self._settings.subtitle_font,
+            size=self._settings.subtitle_size,
+            primary_color=self._settings.subtitle_color,
+            position=self._settings.subtitle_position,
+            alignment=self._settings.subtitle_alignment,
+            margin=self._settings.subtitle_bottom_margin,
+            box_enabled=self._settings.subtitle_box_enabled,
+            background_color=self._settings.subtitle_background_color,
+            background_opacity=self._settings.subtitle_background_opacity,
         )
         parts.append(f"[visual]subtitles=filename='{subtitle_path}':charenc=UTF-8:force_style='{style}'[video]")
         return self._audio_filters(parts, audio_index, request.duration_seconds)
@@ -150,20 +155,3 @@ class FfmpegEndingRenderer:
     @staticmethod
     def _escape_path(file_path: Path) -> str:
         return str(file_path.resolve()).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
-
-    @staticmethod
-    def _escape_style(value: str) -> str:
-        return value.replace("\\", "\\\\").replace("'", "\\'").replace(",", "\\,")
-
-    def _subtitle_alignment(self) -> int:
-        horizontal = {"left": 1, "center": 2, "right": 3}
-        vertical = {"bottom": 0, "middle": 3, "center": 3, "top": 6}
-        try:
-            return vertical[self._settings.subtitle_position.lower()] + horizontal[
-                self._settings.subtitle_alignment.lower()
-            ]
-        except KeyError as error:
-            raise ValueError(
-                "subtitles.position は bottom/middle/top、"
-                "subtitles.alignment は left/center/right を指定してください。"
-            ) from error

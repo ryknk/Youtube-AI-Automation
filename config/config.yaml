@@ -115,6 +115,12 @@ subtitles:
   position: bottom
   alignment: center
   bottom_margin: 80
+  # 字幕を囲む背景ボックスを表示するか
+  box_enabled: false
+  # 字幕背景色（#RRGGBB または ASS形式）
+  background_color: "#000000"
+  # 字幕背景の不透明度（0.0～1.0）
+  background_opacity: 0.6
 
 # YouTubeメタデータ生成の設定
 metadata:

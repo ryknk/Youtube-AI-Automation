@@ -85,23 +85,29 @@ class TemplateManagerTests(unittest.TestCase):
   font: Noto Sans JP
   size: 28
   max_lines: 2
+  background_color: "#000000"
+  background_opacity: 0.5
 """)
             self._write_template(root, "psychology", """subtitles:
   size: 32
   color: "&H0000FFFF"
   max_chars_per_line: 18
+  box_enabled: true
+  background_opacity: 0.7
 """)
             manager = TemplateManager(root)
 
             settings = manager.subtitle_settings({
                 "font": "Arial", "size": 24, "color": "&H00FFFFFF",
                 "max_lines": 1, "timing_mode": "character_ratio",
+                "box_enabled": False,
             }, "psychology")
 
         self.assertEqual(settings, {
             "font": "Noto Sans JP", "size": 32, "color": "&H0000FFFF",
             "max_lines": 2, "timing_mode": "character_ratio",
-            "max_chars_per_line": 18,
+            "max_chars_per_line": 18, "box_enabled": True,
+            "background_color": "#000000", "background_opacity": 0.7,
         })
 
     def test_rejects_invalid_template_subtitle_settings(self) -> None:

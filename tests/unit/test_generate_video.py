@@ -26,7 +26,7 @@ class GenerateVideoTests(unittest.TestCase):
         self.assertIn("subtitles=filename=", filter_graph)
         self.assertIn(
             "force_style='FontName=Arial,FontSize=36,PrimaryColour=&H00FFFFFF,"
-            "Alignment=2,MarginV=80'",
+            "Alignment=2,MarginV=80,BorderStyle=1,BackColour=&H66000000'",
             filter_graph,
         )
         self.assertIn("volume=0.15", filter_graph)
@@ -38,3 +38,23 @@ class GenerateVideoTests(unittest.TestCase):
         for image_file in ("scene01.png", "scene02.png"):
             image_index = command.index(image_file)
             self.assertEqual(command[image_index - 5:image_index - 3], ["-framerate", "30"])
+
+    def test_subtitle_background_box_is_added_to_force_style(self) -> None:
+        renderer = FfmpegVideoRenderer(
+            duration_provider=FakeDurationProvider(),
+            settings=VideoRenderSettings(
+                1920, 1080, 30, False, Path("unused.mp3"), 0.0,
+                subtitle_box_enabled=True, subtitle_background_color="#123456",
+                subtitle_background_opacity=0.75,
+            ),
+        )
+
+        command = renderer.build_command(
+            (RenderScene(1, Path("scene01.png"), Path("scene01.mp3"), 2.0),),
+            Path("subtitles.srt"), Path("video.mp4"),
+        )
+        filter_graph = command[command.index("-filter_complex") + 1]
+
+        self.assertIn("BorderStyle=3", filter_graph)
+        self.assertIn("BackColour=&H40563412", filter_graph)
+        self.assertIn("Outline=4,Shadow=0", filter_graph)

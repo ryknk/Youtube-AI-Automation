@@ -31,7 +31,11 @@ from youtube_generator.services.quality_checker import QualityChecker, ScriptQua
 from youtube_generator.services.retry import RetryPolicy
 from youtube_generator.services.image_prompt_builder import ImagePromptBuilder
 from youtube_generator.services.srt_builder import SrtBuilder
-from youtube_generator.services.subtitle_splitter import SubtitleSettings, SubtitleSplitter
+from youtube_generator.services.subtitle_splitter import (
+    SUBTITLE_SPLITTER_VERSION,
+    SubtitleSettings,
+    SubtitleSplitter,
+)
 from youtube_generator.services.template_service import TemplateManager
 from youtube_generator.services.video_settings import load_video_settings
 from youtube_generator.services.bgm_manager import BGMManager
@@ -285,6 +289,13 @@ def run() -> None:
                     subtitle_position=str(subtitle_values.get("position", "bottom")),
                     subtitle_alignment=str(subtitle_values.get("alignment", "center")),
                     subtitle_bottom_margin=int(subtitle_values.get("bottom_margin", 80)),
+                    subtitle_box_enabled=bool(subtitle_values.get("box_enabled", False)),
+                    subtitle_background_color=str(
+                        subtitle_values.get("background_color", "&H00000000")
+                    ),
+                    subtitle_background_opacity=float(
+                        subtitle_values.get("background_opacity", 0.6)
+                    ),
                 ),
             )
             video_file = GenerateVideoUseCase(renderer).execute(args.generate_video, str(video_values["output_format"]))
@@ -336,6 +347,7 @@ def run() -> None:
             subtitle_fingerprint = CacheManager.make_key(
                 video_settings.fingerprint,
                 json.dumps(subtitle_values, ensure_ascii=False, sort_keys=True),
+                SUBTITLE_SPLITTER_VERSION,
             )
             subtitle_cache_key = CacheManager.make_file_key(
                 "subtitle", subtitle_inputs, subtitle_fingerprint,

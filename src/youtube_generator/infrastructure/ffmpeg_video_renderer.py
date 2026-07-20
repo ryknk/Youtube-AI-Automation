@@ -8,6 +8,7 @@ from pathlib import Path
 from youtube_generator.domain.audio_duration_provider import AudioDurationProvider
 from youtube_generator.domain.video_renderer import VideoRenderer
 from youtube_generator.exceptions import VideoRenderingError
+from youtube_generator.services.subtitle_style import build_ass_subtitle_style
 
 
 SCENE_IMAGE_PATTERN = re.compile(r"scene(\d{2})\.png$", re.IGNORECASE)
@@ -32,6 +33,9 @@ class VideoRenderSettings:
     subtitle_position: str = "bottom"
     subtitle_alignment: str = "center"
     subtitle_bottom_margin: int = 80
+    subtitle_box_enabled: bool = False
+    subtitle_background_color: str = "&H00000000"
+    subtitle_background_opacity: float = 0.6
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,12 +124,16 @@ class FfmpegVideoRenderer(VideoRenderer):
 
         filters.append(f"{''.join(concat_inputs)}concat=n={len(scenes)}:v=1:a=1[concatenated_video][narration]")
         subtitle_path = self._escape_filter_path(subtitle_file)
-        subtitle_style = (
-            f"FontName={self._escape_style_value(self._settings.subtitle_font)},"
-            f"FontSize={self._settings.subtitle_size},"
-            f"PrimaryColour={self._escape_style_value(self._settings.subtitle_color)},"
-            f"Alignment={self._subtitle_alignment()},"
-            f"MarginV={self._settings.subtitle_bottom_margin}"
+        subtitle_style = build_ass_subtitle_style(
+            font=self._settings.subtitle_font,
+            size=self._settings.subtitle_size,
+            primary_color=self._settings.subtitle_color,
+            position=self._settings.subtitle_position,
+            alignment=self._settings.subtitle_alignment,
+            margin=self._settings.subtitle_bottom_margin,
+            box_enabled=self._settings.subtitle_box_enabled,
+            background_color=self._settings.subtitle_background_color,
+            background_opacity=self._settings.subtitle_background_opacity,
         )
         filters.append(
             f"[concatenated_video]subtitles=filename='{subtitle_path}':charenc=UTF-8:"
@@ -169,20 +177,3 @@ class FfmpegVideoRenderer(VideoRenderer):
     def _escape_filter_path(path: Path) -> str:
         """FFmpegフィルター内で使用できるWindowsパスへ変換する。"""
         return str(path.resolve()).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
-
-    @staticmethod
-    def _escape_style_value(value: str) -> str:
-        return value.replace("\\", "\\\\").replace("'", "\\'").replace(",", "\\,")
-
-    def _subtitle_alignment(self) -> int:
-        horizontal = {"left": 1, "center": 2, "right": 3}
-        vertical = {"bottom": 0, "middle": 3, "center": 3, "top": 6}
-        try:
-            return vertical[self._settings.subtitle_position.lower()] + horizontal[
-                self._settings.subtitle_alignment.lower()
-            ]
-        except KeyError as error:
-            raise ValueError(
-                "subtitles.position は bottom/middle/top、"
-                "subtitles.alignment は left/center/right を指定してください。"
-            ) from error

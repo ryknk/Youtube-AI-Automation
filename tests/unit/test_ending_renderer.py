@@ -58,6 +58,8 @@ def test_ending_subtitle_style_uses_position_alignment_and_margin(tmp_path: Path
             subtitle_font="Noto Sans JP", subtitle_size=30,
             subtitle_color="&H0000FFFF", subtitle_position="top",
             subtitle_alignment="right", subtitle_bottom_margin=42,
+            subtitle_box_enabled=True, subtitle_background_color="#102030",
+            subtitle_background_opacity=0.5,
         )
     )
     request = EndingRenderRequest(
@@ -71,3 +73,4 @@ def test_ending_subtitle_style_uses_position_alignment_and_margin(tmp_path: Path
 
     assert "FontName=Noto Sans JP,FontSize=30,PrimaryColour=&H0000FFFF" in filters
     assert "Alignment=9,MarginV=42" in filters
+    assert "BorderStyle=3,BackColour=&H80302010,Outline=4,Shadow=0" in filters

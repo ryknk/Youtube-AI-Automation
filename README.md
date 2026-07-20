@@ -125,9 +125,12 @@ subtitles:
   position: bottom
   alignment: center
   bottom_margin: 80
+  box_enabled: true
+  background_color: "#000000"
+  background_opacity: 0.6
 ```
 
-設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。テンプレート別字幕設定は本編の字幕分割・動画描画とエンディングの字幕スタイルに反映されます。変更時は字幕と字幕を含む動画のみが更新対象です。エンディング字幕の表示・非表示は、従来どおり`ending.subtitles.enabled`で個別に設定します。
+設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。`box_enabled`を`true`にすると字幕の周囲に背景ボックスを表示します。`background_color`は`#RRGGBB`またはASS形式、`background_opacity`は`0.0`（透明）～`1.0`（不透明）で指定します。背景色と透明度は、本編とエンディングの両方に反映されます。テンプレート別字幕設定は本編の字幕分割・動画描画とエンディングの字幕スタイルに反映されます。変更時は字幕と字幕を含む動画のみが更新対象です。エンディング字幕の表示・非表示は、従来どおり`ending.subtitles.enabled`で個別に設定します。
 
 ## ジョブキューで動画を生成する
 

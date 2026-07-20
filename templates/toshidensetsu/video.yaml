@@ -2,7 +2,7 @@ display_name: 都市伝説
 scene_structure: [導入, 噂の内容, 検証, 結論]
 subtitles:
   font: Arial
-  size: 24
+  size: 28
   color: "&H00FFFFFF"
   segmentation_mode: semantic
   max_lines: 2
@@ -13,6 +13,9 @@ subtitles:
   position: bottom
   alignment: center
   bottom_margin: 80
+  box_enabled: false
+  background_color: "#000000"
+  background_opacity: 0.6
 bgm:
   enabled: false
   render_mode: per_section
