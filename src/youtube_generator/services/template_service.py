@@ -40,6 +40,35 @@ class TemplateManager:
         template = self.get(template_id)
         return self._templates_dir / template.template_id
 
+    def voicevox_audio_settings(
+        self, global_audio_settings: dict[str, Any], template_id: str | None = None,
+    ) -> dict[str, Any]:
+        """VOICEVOX設定を共通、default、選択テンプレートの順に解決する。"""
+        resolved_audio = dict(global_audio_settings)
+        global_voicevox = global_audio_settings.get("voicevox", {})
+        if not isinstance(global_voicevox, dict):
+            raise ValueError("config.yaml の audio.voicevox 設定が不正です。")
+        resolved_voicevox = dict(global_voicevox)
+        selected = self.get(template_id)
+
+        if selected.template_id != "default" and (self._templates_dir / "default").is_dir():
+            resolved_voicevox.update(self._template_voicevox_settings(self.get("default")))
+        resolved_voicevox.update(self._template_voicevox_settings(selected))
+        resolved_audio["voicevox"] = resolved_voicevox
+        return resolved_audio
+
+    @staticmethod
+    def _template_voicevox_settings(template: VideoTemplate) -> dict[str, Any]:
+        audio = (template.video_settings or {}).get("audio", {})
+        if not isinstance(audio, dict):
+            raise ValueError(f"テンプレート {template.template_id} の audio 設定が不正です。")
+        voicevox = audio.get("voicevox", {})
+        if not isinstance(voicevox, dict):
+            raise ValueError(
+                f"テンプレート {template.template_id} の audio.voicevox 設定が不正です。"
+            )
+        return voicevox
+
     def ending_subtitles_enabled(self, template_id: str | None = None, default: bool = True) -> bool:
         """テンプレートのエンディング字幕表示設定。未指定時はdefault、最終的にtrue。"""
         template = self.get(template_id)

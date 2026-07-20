@@ -27,7 +27,10 @@ class VOICEVOXTTSProvider:
 
     def generate_speech(self, text: str, output_file: Path) -> None:
         self._logger.info("VOICEVOX音声生成を開始します: speaker_id=%s", self._speaker_id)
-        query = self._request_with_retry("/audio_query", urlencode({"text": text, "speaker": self._speaker_id}).encode(), "application/x-www-form-urlencoded")
+        audio_query_parameters = urlencode({"text": text, "speaker": self._speaker_id})
+        query = self._request_with_retry(
+            "/audio_query", b"", None, audio_query_parameters,
+        )
         payload = json.loads(query.decode("utf-8"))
         payload.update(self._query_settings)
         wav = self._request_with_retry("/synthesis", json.dumps(payload).encode("utf-8"), "application/json", f"speaker={self._speaker_id}")
@@ -52,6 +55,10 @@ class VOICEVOXTTSProvider:
             with urlopen(request, timeout=self._timeout) as response:
                 return response.read()
         except HTTPError as error:
-            raise VoicevoxHTTPError(error.code, f"VOICEVOX APIエラー: HTTP {error.code}") from error
+            detail = error.read().decode("utf-8", errors="replace").strip()
+            message = f"VOICEVOX APIエラー: HTTP {error.code}"
+            if detail:
+                message += f" - {detail[:1000]}"
+            raise VoicevoxHTTPError(error.code, message) from error
         except URLError as error:
             raise ConnectionError(f"VOICEVOX Engineへ接続できません: {url}") from error

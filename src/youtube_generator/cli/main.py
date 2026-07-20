@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import json
 import shutil
 import sys
 from dataclasses import replace
@@ -379,11 +380,31 @@ def run() -> None:
             audio_settings = video_settings.values["audio"]
             if not isinstance(retry_settings, dict) or not isinstance(audio_settings, dict):
                 raise ValueError("config.yaml の retry または audio 設定が不正です。")
+            if str(provider_settings.get("tts", "")).lower() == "voicevox":
+                audio_settings = templates.voicevox_audio_settings(
+                    audio_settings, template.template_id,
+                )
+                voicevox_settings = audio_settings["voicevox"]
+                logger.info(
+                    "テンプレート別VOICEVOX設定: template=%s, speaker_id=%s, "
+                    "speed_scale=%s, pitch_scale=%s, intonation_scale=%s, volume_scale=%s",
+                    template.template_id, voicevox_settings.get("speaker_id", 3),
+                    voicevox_settings.get("speed_scale", 1.0),
+                    voicevox_settings.get("pitch_scale", 0.0),
+                    voicevox_settings.get("intonation_scale", 1.0),
+                    voicevox_settings.get("volume_scale", 1.0),
+                )
             synthesizer = plugin_manager.create_tts_provider(
                 audio_settings, RetryPolicy.from_settings(retry_settings)
             )
             audio_inputs = tuple(sorted(args.generate_audio.glob("scene*.txt")))
-            audio_cache_key = CacheManager.make_file_key("voice", audio_inputs, video_settings.fingerprint)
+            audio_fingerprint = CacheManager.make_key(
+                video_settings.fingerprint,
+                json.dumps(audio_settings, ensure_ascii=False, sort_keys=True),
+            )
+            audio_cache_key = CacheManager.make_file_key(
+                "voice", audio_inputs, audio_fingerprint,
+            )
             if cache_manager is not None and cache_manager.exists(audio_cache_key, "voice"):
                 audio_files = cache_manager.restore_files(audio_cache_key, "voice", args.generate_audio)
                 logger.info("音声をキャッシュから復元しました。")

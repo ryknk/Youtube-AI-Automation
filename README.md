@@ -76,7 +76,7 @@ PowerShell 7など、問題が発生しない環境では`python main.py`また�
 | `image_prompt.txt` | シーン画像の画風と表現方針 |
 | `title_prompt.txt` | YouTubeタイトル専用の生成方針 |
 | `thumbnail_prompt.txt` | サムネイルの構図と表現方針 |
-| `video.yaml` | 表示名とシーン構成 |
+| `video.yaml` | 表示名、シーン構成、VOICEVOX、BGM、エンディング字幕の設定 |
 
 新しいテンプレートを追加する場合は、既存フォルダを複製して上記ファイルを編集します。`video.yaml`には少なくとも表示名とシーン構成を指定してください。
 
@@ -88,6 +88,24 @@ scene_structure: [導入, 材料, 調理手順, まとめ]
 ```
 
 フォルダ名が`cooking`の場合は、`--template cooking`で選択できます。`display_name`はジャンル名として出力フォルダの階層に使用されます。
+
+### テンプレート別VOICEVOX設定
+
+`config/config.yaml`の`providers.tts`が`voicevox`の場合、各テンプレートの`video.yaml`で話者や読み上げ方を上書きできます。
+
+```yaml
+audio:
+  voicevox:
+    speaker_id: 3
+    speed_scale: 1.0
+    pitch_scale: 0.0
+    intonation_scale: 1.0
+    volume_scale: 1.0
+    pre_phoneme_length: 0.1
+    post_phoneme_length: 0.1
+```
+
+`base_url`と`timeout`もテンプレート側で上書きできます。設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。VOICEVOX設定を変更すると、対象テンプレートの音声キャッシュだけが無効になります。テンプレート側でTTSプロバイダー自体を切り替えることはできません。
 
 ## ジョブキューで動画を生成する
 

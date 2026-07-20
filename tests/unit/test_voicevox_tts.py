@@ -1,4 +1,5 @@
 import json
+from urllib.parse import parse_qs
 
 from youtube_generator.plugins.tts.voicevox_tts import VOICEVOXTTSProvider
 from youtube_generator.services.retry import RetryPolicy
@@ -18,5 +19,7 @@ def test_voicevox_queries_then_synthesizes_wav(tmp_path):
     provider.generate_speech("テスト", output)
     assert output.read_bytes().startswith(b"RIFF")
     assert provider.calls[0][0] == "/audio_query"
+    assert provider.calls[0][1] == b""
+    assert parse_qs(provider.calls[0][2]) == {"text": ["テスト"], "speaker": ["3"]}
     assert provider.calls[1][0] == "/synthesis"
     assert provider.calls[1][2] == "speaker=3"

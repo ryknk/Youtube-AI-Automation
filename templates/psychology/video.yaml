@@ -9,3 +9,12 @@ bgm:
   fade_in: 1.0
   fade_out: 2.0
   missing_file_behavior: fallback
+audio:
+  voicevox:
+    speaker_id: 2
+    speed_scale: 1.0
+    pitch_scale: 0.0
+    intonation_scale: 1.0
+    volume_scale: 1.0
+    pre_phoneme_length: 0.1
+    post_phoneme_length: 0.1
