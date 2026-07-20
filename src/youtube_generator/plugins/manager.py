@@ -13,6 +13,7 @@ from youtube_generator.plugins.image.openai_image import OpenAIImageProvider
 from youtube_generator.plugins.image.bfl_image import BFLImageProvider
 from youtube_generator.plugins.text.openai_text import OpenAITextProvider
 from youtube_generator.plugins.tts.openai_tts import OpenAITTSProvider
+from youtube_generator.plugins.tts.voicevox_tts import VOICEVOXTTSProvider
 from youtube_generator.services.retry import RetryPolicy
 
 
@@ -47,6 +48,15 @@ class PluginManager:
                 self._api_key(), str(audio_settings["model"]), str(audio_settings["voice"]),
                 float(audio_settings["speed"]), str(audio_settings["instructions"]), retry_policy,
             )
+        if self._provider_name("tts") == "voicevox":
+            values = audio_settings.get("voicevox", {})
+            if not isinstance(values, dict):
+                raise ValueError("config.yaml の audio.voicevox 設定が不正です。")
+            return VOICEVOXTTSProvider(str(values.get("base_url", "http://127.0.0.1:50021")), int(values.get("speaker_id", 3)), float(values.get("timeout", 30)), {
+                "speedScale": float(values.get("speed_scale", 1.0)), "pitchScale": float(values.get("pitch_scale", 0.0)),
+                "intonationScale": float(values.get("intonation_scale", 1.0)), "volumeScale": float(values.get("volume_scale", 1.0)),
+                "prePhonemeLength": float(values.get("pre_phoneme_length", 0.1)), "postPhonemeLength": float(values.get("post_phoneme_length", 0.1)),
+            }, retry_policy)
         raise ValueError(f"未対応のttsプロバイダーです: {self._provider_name('tts')}")
 
     def create_image_provider(

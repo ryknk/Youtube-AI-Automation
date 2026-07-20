@@ -82,6 +82,8 @@ class Retry:
         """仕様で許可されたネットワーク・HTTP エラーだけを判定する。"""
         if isinstance(error, (APITimeoutError, APIConnectionError, TimeoutError, ConnectionError)):
             return True
+        if getattr(error, "status_code", None) in {500, 502, 503, 504}:
+            return True
         return isinstance(error, APIStatusError) and error.status_code in RETRYABLE_STATUS_CODES
 
 

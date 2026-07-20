@@ -21,6 +21,9 @@ from youtube_generator.services.srt_builder import SrtBuilder, SubtitleCue
 from youtube_generator.services.template_service import TemplateManager
 
 
+_ENDING_RENDER_STYLE_VERSION = "static-images-v1"
+
+
 class EndingRenderer(Protocol):
     def render(self, request: EndingRenderRequest) -> None: ...
     def concat(self, main_video: Path, ending_video: Path, output_file: Path) -> None: ...
@@ -245,6 +248,7 @@ class EndingManager:
     def _cache_key(self, template: VideoTemplate, materials: TemplateMaterials) -> str:
         digest = hashlib.sha256()
         digest.update(template.template_id.encode("utf-8"))
+        digest.update(_ENDING_RENDER_STYLE_VERSION.encode("utf-8"))
         digest.update(materials.reference_text.encode("utf-8"))
         digest.update(json.dumps(asdict(self._settings), sort_keys=True).encode("utf-8"))
         digest.update(self._settings_fingerprint.encode("utf-8"))

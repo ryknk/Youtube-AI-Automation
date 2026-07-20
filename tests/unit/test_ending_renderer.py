@@ -1,0 +1,50 @@
+"""エンディング動画レンダラーのテスト。"""
+
+from pathlib import Path
+
+from youtube_generator.ending.renderer import EndingRenderRequest, FfmpegEndingRenderer
+from youtube_generator.infrastructure.ffmpeg_video_renderer import VideoRenderSettings
+
+
+def test_ending_images_are_fixed_without_zoom_movement_or_fade(tmp_path: Path) -> None:
+    renderer = FfmpegEndingRenderer(
+        VideoRenderSettings(
+            width=1920, height=1080, fps=30, bgm_enabled=False,
+            bgm_file=tmp_path / "unused.mp3", bgm_volume=0.0,
+        )
+    )
+    request = EndingRenderRequest(
+        audio_file=tmp_path / "ending.mp3", subtitle_file=None,
+        image_files=(tmp_path / "ending.png",), output_file=tmp_path / "ending.mp4",
+        duration_seconds=5.0,
+    )
+
+    command = renderer.build_command(request)
+    filters = command[command.index("-filter_complex") + 1]
+
+    assert "zoompan" not in filters
+    assert "fade=t=" not in filters
+    assert "scale=1920:1080:force_original_aspect_ratio=decrease" in filters
+    assert "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black" in filters
+    assert "trim=duration=5.000" in filters
+
+
+def test_multiple_ending_images_remain_fixed_and_are_concatenated(tmp_path: Path) -> None:
+    renderer = FfmpegEndingRenderer(
+        VideoRenderSettings(
+            width=1280, height=720, fps=30, bgm_enabled=False,
+            bgm_file=tmp_path / "unused.mp3", bgm_volume=0.0,
+        )
+    )
+    request = EndingRenderRequest(
+        audio_file=tmp_path / "ending.mp3", subtitle_file=None,
+        image_files=(tmp_path / "first.png", tmp_path / "second.png"),
+        output_file=tmp_path / "ending.mp4", duration_seconds=6.0,
+    )
+
+    command = renderer.build_command(request)
+    filters = command[command.index("-filter_complex") + 1]
+
+    assert "zoompan" not in filters
+    assert filters.count("trim=duration=3.000") == 2
+    assert "[v0][v1]concat=n=2:v=1:a=0[visual]" in filters

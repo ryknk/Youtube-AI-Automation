@@ -78,14 +78,16 @@ class FfmpegEndingRenderer:
 
     def _filters(self, request: EndingRenderRequest, image_count: int) -> str:
         parts: list[str] = []
-        duration = "shortest"
+        audio_index = image_count
         segment_duration = request.duration_seconds / image_count
-        fade_start = max(0.0, segment_duration - 0.35)
         for index in range(image_count):
             parts.append(
-                f"[{index}:v]scale={round(self._settings.width * 1.05)}:{round(self._settings.height * 1.05)},"
-                f"zoompan=z='min(1+on*0.00012,1.05)':d=1:s={self._settings.width}x{self._settings.height}:"
-                f"fps={self._settings.fps},fade=t=in:st=0:d=0.35,fade=t=out:st={fade_start:.3f}:d=0.35[v{index}]"
+                f"[{index}:v]scale={self._settings.width}:{self._settings.height}:"
+                "force_original_aspect_ratio=decrease,"
+                f"pad={self._settings.width}:{self._settings.height}:"
+                "(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,"
+                f"fps={self._settings.fps},trim=duration={segment_duration:.3f},"
+                f"setpts=PTS-STARTPTS[v{index}]"
             )
         if image_count == 1:
             parts.append("[v0]null[visual]")
@@ -94,7 +96,7 @@ class FfmpegEndingRenderer:
             parts.append(f"{concat_inputs}concat=n={image_count}:v=1:a=0[visual]")
         if request.subtitle_file is None:
             parts.append("[visual]null[video]")
-            return self._audio_filters(parts, audio_index)
+            return self._audio_filters(parts, audio_index, request.duration_seconds)
         subtitle_path = self._escape_path(request.subtitle_file)
         style = (
             f"FontName={self._escape_style(self._settings.subtitle_font)},"
@@ -102,15 +104,17 @@ class FfmpegEndingRenderer:
             f"PrimaryColour={self._escape_style(self._settings.subtitle_color)}"
         )
         parts.append(f"[visual]subtitles=filename='{subtitle_path}':charenc=UTF-8:force_style='{style}'[video]")
-        return self._audio_filters(parts, audio_index)
+        return self._audio_filters(parts, audio_index, request.duration_seconds)
 
-    def _audio_filters(self, parts: list[str], audio_index: int) -> str:
+    def _audio_filters(
+        self, parts: list[str], audio_index: int, duration_seconds: float,
+    ) -> str:
         if self._settings.bgm_enabled and self._settings.bgm_file.is_file():
-            fade_in = min(self._settings.bgm_fade_in, request.duration_seconds)
-            fade_out = min(self._settings.bgm_fade_out, request.duration_seconds)
-            fade_out_start = max(0.0, request.duration_seconds - fade_out)
+            fade_in = min(self._settings.bgm_fade_in, duration_seconds)
+            fade_out = min(self._settings.bgm_fade_out, duration_seconds)
+            fade_out_start = max(0.0, duration_seconds - fade_out)
             bgm_filters = [
-                f"[{audio_index + 1}:a]atrim=duration={request.duration_seconds:.3f}",
+                f"[{audio_index + 1}:a]atrim=duration={duration_seconds:.3f}",
                 f"volume={self._settings.bgm_volume}",
             ]
             if fade_in > 0:
@@ -118,7 +122,7 @@ class FfmpegEndingRenderer:
             if fade_out > 0:
                 bgm_filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={fade_out:.3f}")
             parts.append(",".join(bgm_filters) + "[bgm]")
-            parts.append(f"[{audio_index}:a][bgm]amix=inputs=2:duration={duration}:weights='1 1'[audio]")
+            parts.append(f"[{audio_index}:a][bgm]amix=inputs=2:duration=shortest:weights='1 1'[audio]")
         else:
             parts.append(f"[{audio_index}:a]anull[audio]")
         return ";".join(parts)

@@ -14,7 +14,7 @@ providers:
   # 台本・シーン分割・メタデータ生成のプロバイダー
   text: openai
   # 音声合成のプロバイダー
-  tts: openai
+  tts: voicevox
   # 画像生成のプロバイダー
   image: bfl
 
@@ -59,6 +59,16 @@ audio:
   speed: 1.0
   # 音声合成モデルへの読み上げ指示
   instructions: 自然で聞き取りやすい日本語ナレーションとして話してください。
+  voicevox:
+    base_url: http://127.0.0.1:50021
+    speaker_id: 3
+    timeout: 30
+    speed_scale: 1.0
+    pitch_scale: 0.0
+    intonation_scale: 1.0
+    volume_scale: 1.0
+    pre_phoneme_length: 0.1
+    post_phoneme_length: 0.1
 
 # BGMの設定
 bgm:

@@ -44,7 +44,11 @@ class TemplateManager:
         """テンプレートのエンディング字幕表示設定。未指定時はdefault、最終的にtrue。"""
         template = self.get(template_id)
         value = self._ending_subtitle_value(template)
-        if value is None and template.template_id != "default":
+        if (
+            value is None
+            and template.template_id != "default"
+            and (self._templates_dir / "default").is_dir()
+        ):
             value = self._ending_subtitle_value(self.get("default"))
         return default if value is None else value
 
