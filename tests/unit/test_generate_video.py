@@ -25,7 +25,8 @@ class GenerateVideoTests(unittest.TestCase):
         self.assertIn("zoompan", filter_graph)
         self.assertIn("subtitles=filename=", filter_graph)
         self.assertIn(
-            "force_style='FontName=Arial,FontSize=36,PrimaryColour=&H00FFFFFF'",
+            "force_style='FontName=Arial,FontSize=36,PrimaryColour=&H00FFFFFF,"
+            "Alignment=2,MarginV=80'",
             filter_graph,
         )
         self.assertIn("volume=0.15", filter_graph)

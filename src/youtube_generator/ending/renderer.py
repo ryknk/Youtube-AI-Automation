@@ -101,7 +101,9 @@ class FfmpegEndingRenderer:
         style = (
             f"FontName={self._escape_style(self._settings.subtitle_font)},"
             f"FontSize={self._settings.subtitle_size},"
-            f"PrimaryColour={self._escape_style(self._settings.subtitle_color)}"
+            f"PrimaryColour={self._escape_style(self._settings.subtitle_color)},"
+            f"Alignment={self._subtitle_alignment()},"
+            f"MarginV={self._settings.subtitle_bottom_margin}"
         )
         parts.append(f"[visual]subtitles=filename='{subtitle_path}':charenc=UTF-8:force_style='{style}'[video]")
         return self._audio_filters(parts, audio_index, request.duration_seconds)
@@ -152,3 +154,16 @@ class FfmpegEndingRenderer:
     @staticmethod
     def _escape_style(value: str) -> str:
         return value.replace("\\", "\\\\").replace("'", "\\'").replace(",", "\\,")
+
+    def _subtitle_alignment(self) -> int:
+        horizontal = {"left": 1, "center": 2, "right": 3}
+        vertical = {"bottom": 0, "middle": 3, "center": 3, "top": 6}
+        try:
+            return vertical[self._settings.subtitle_position.lower()] + horizontal[
+                self._settings.subtitle_alignment.lower()
+            ]
+        except KeyError as error:
+            raise ValueError(
+                "subtitles.position は bottom/middle/top、"
+                "subtitles.alignment は left/center/right を指定してください。"
+            ) from error

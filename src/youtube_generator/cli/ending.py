@@ -1,6 +1,7 @@
 """テンプレート共通エンディングの明示的なCLI操作。"""
 
 import argparse
+import json
 
 from youtube_generator.config import load_settings
 from youtube_generator.ending.manager import EndingManager, EndingSettings
@@ -30,6 +31,7 @@ def create_ending_manager() -> EndingManager:
         raise ValueError("config.yaml のエンディング関連設定が不正です。")
     retry_policy = RetryPolicy.from_settings(retry)
     plugin_manager = PluginManager(settings, providers, text)
+    templates = TemplateManager(settings.templates_dir)
     configured_bgm = str(bgm["path"])
     bgm_file = settings.config_dir.parent / configured_bgm
     renderer_settings = VideoRenderSettings(
@@ -37,14 +39,17 @@ def create_ending_manager() -> EndingManager:
         bgm_enabled=bool(bgm["enabled"]), bgm_file=bgm_file, bgm_volume=float(bgm["volume"]),
         subtitle_font=str(subtitles["font"]), subtitle_size=int(subtitles["size"]),
         subtitle_color=str(subtitles["color"]),
+        subtitle_position=str(subtitles.get("position", "bottom")),
+        subtitle_alignment=str(subtitles.get("alignment", "center")),
+        subtitle_bottom_margin=int(subtitles.get("bottom_margin", 80)),
     )
     cache_values = values["cache"]
     cache = CacheManager(settings.cache_dir) if isinstance(cache_values, dict) and bool(cache_values["enabled"]) else None
-    templates = TemplateManager(settings.templates_dir)
     bgm_manager = BGMManager(templates, bgm, settings.config_dir.parent)
 
     def renderer_for_template(template_id: str) -> FfmpegEndingRenderer:
         bgm_setting = bgm_manager.resolve(template_id, "ending")
+        template_subtitles = templates.subtitle_settings(subtitles, template_id)
         if bgm_manager.render_mode(template_id) == "final_mix":
             bgm_setting = bgm_setting.__class__(enabled=False, source="final_mix")
         return FfmpegEndingRenderer(VideoRenderSettings(
@@ -52,9 +57,25 @@ def create_ending_manager() -> EndingManager:
             bgm_enabled=bgm_setting.enabled, bgm_file=bgm_setting.file or bgm_file,
             bgm_volume=bgm_setting.volume, bgm_loop=bgm_setting.loop,
             bgm_fade_in=bgm_setting.fade_in, bgm_fade_out=bgm_setting.fade_out,
-            subtitle_font=renderer_settings.subtitle_font, subtitle_size=renderer_settings.subtitle_size,
-            subtitle_color=renderer_settings.subtitle_color,
+            subtitle_font=str(template_subtitles["font"]),
+            subtitle_size=int(template_subtitles["size"]),
+            subtitle_color=str(template_subtitles["color"]),
+            subtitle_position=str(template_subtitles.get("position", "bottom")),
+            subtitle_alignment=str(template_subtitles.get("alignment", "center")),
+            subtitle_bottom_margin=int(template_subtitles.get("bottom_margin", 80)),
         ))
+
+    def asset_fingerprint_for_template(template_id: str) -> str:
+        bgm_fingerprint = (
+            "final_mix_without_section_bgm"
+            if bgm_manager.render_mode(template_id) == "final_mix"
+            else bgm_manager.resolve(template_id, "ending").cache_fingerprint
+        )
+        subtitle_fingerprint = CacheManager.make_key(json.dumps(
+            templates.subtitle_settings(subtitles, template_id),
+            ensure_ascii=False, sort_keys=True,
+        ))
+        return CacheManager.make_key(bgm_fingerprint, subtitle_fingerprint)
 
     return EndingManager(
         templates, settings.config_dir.parent / "generated_assets" / "endings",
@@ -62,11 +83,7 @@ def create_ending_manager() -> EndingManager:
         FfprobeAudioDurationProvider(settings.ffprobe_executable), SrtBuilder(), FfmpegEndingRenderer(renderer_settings),
         QualityChecker(load_quality_rules(quality)), EndingSettings.from_config(values.get("ending", {})),
         cache, config.fingerprint, renderer_for_template,
-        lambda template_id: (
-            "final_mix_without_section_bgm"
-            if bgm_manager.render_mode(template_id) == "final_mix"
-            else bgm_manager.resolve(template_id, "ending").cache_fingerprint
-        ),
+        asset_fingerprint_for_template,
     )
 
 

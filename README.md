@@ -107,6 +107,28 @@ audio:
 
 `base_url`と`timeout`もテンプレート側で上書きできます。設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。VOICEVOX設定を変更すると、対象テンプレートの音声キャッシュだけが無効になります。テンプレート側でTTSプロバイダー自体を切り替えることはできません。
 
+### テンプレート別字幕設定
+
+`config/config.yaml`の`subtitles`設定は、各テンプレートの`video.yaml`で上書きできます。変更する項目だけを記述できます。
+
+```yaml
+subtitles:
+  font: Arial
+  size: 24
+  color: "&H00FFFFFF"
+  segmentation_mode: semantic
+  max_lines: 2
+  max_chars_per_line: 20
+  min_chars_per_segment: 6
+  timing_mode: alignment
+  fallback_timing_mode: character_ratio
+  position: bottom
+  alignment: center
+  bottom_margin: 80
+```
+
+設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。テンプレート別字幕設定は本編の字幕分割・動画描画とエンディングの字幕スタイルに反映されます。変更時は字幕と字幕を含む動画のみが更新対象です。エンディング字幕の表示・非表示は、従来どおり`ending.subtitles.enabled`で個別に設定します。
+
 ## ジョブキューで動画を生成する
 
 ```powershell

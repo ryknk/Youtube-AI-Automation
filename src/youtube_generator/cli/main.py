@@ -224,14 +224,17 @@ def run() -> None:
             video_values = video_settings.values["video"]
             bgm_values = video_settings.values["bgm"]
             image_values = video_settings.values["image"]
-            subtitle_values = video_settings.values["subtitles"]
+            global_subtitle_values = video_settings.values["subtitles"]
             quality_values = video_settings.values["quality"]
             if not isinstance(video_values, dict) or not isinstance(bgm_values, dict):
                 raise ValueError("config.yaml の video または bgm 設定が不正です。")
             if not isinstance(image_values, dict):
                 raise ValueError("config.yaml の image 設定が不正です。")
-            if not isinstance(subtitle_values, dict):
+            if not isinstance(global_subtitle_values, dict):
                 raise ValueError("config.yaml の subtitles 設定が不正です。")
+            subtitle_values = templates.subtitle_settings(
+                global_subtitle_values, template.template_id,
+            )
             if not isinstance(quality_values, dict):
                 raise ValueError("config.yaml の quality 設定が不正です。")
             duration_provider = FfprobeAudioDurationProvider(settings.ffprobe_executable)
@@ -279,6 +282,9 @@ def run() -> None:
                     bgm_fade_in=bgm_setting.fade_in, bgm_fade_out=bgm_setting.fade_out,
                     subtitle_font=str(subtitle_values["font"]), subtitle_size=int(subtitle_values["size"]),
                     subtitle_color=str(subtitle_values["color"]),
+                    subtitle_position=str(subtitle_values.get("position", "bottom")),
+                    subtitle_alignment=str(subtitle_values.get("alignment", "center")),
+                    subtitle_bottom_margin=int(subtitle_values.get("bottom_margin", 80)),
                 ),
             )
             video_file = GenerateVideoUseCase(renderer).execute(args.generate_video, str(video_values["output_format"]))
@@ -311,13 +317,29 @@ def run() -> None:
             return
 
         if args.generate_subtitles:
-            subtitle_values = video_settings.values["subtitles"]
-            if not isinstance(subtitle_values, dict):
+            global_subtitle_values = video_settings.values["subtitles"]
+            if not isinstance(global_subtitle_values, dict):
                 raise ValueError("config.yaml の subtitles 設定が不正です。")
+            subtitle_values = templates.subtitle_settings(
+                global_subtitle_values, template.template_id,
+            )
+            logger.info(
+                "テンプレート別字幕設定: template=%s, font=%s, size=%s, "
+                "segmentation_mode=%s, timing_mode=%s",
+                template.template_id, subtitle_values.get("font"),
+                subtitle_values.get("size"), subtitle_values.get("segmentation_mode"),
+                subtitle_values.get("timing_mode"),
+            )
             subtitle_inputs = tuple(sorted(args.generate_subtitles.glob("scene*.mp3"))) + tuple(
                 sorted(args.generate_subtitles.glob("scene*.txt"))
             )
-            subtitle_cache_key = CacheManager.make_file_key("subtitle", subtitle_inputs, video_settings.fingerprint)
+            subtitle_fingerprint = CacheManager.make_key(
+                video_settings.fingerprint,
+                json.dumps(subtitle_values, ensure_ascii=False, sort_keys=True),
+            )
+            subtitle_cache_key = CacheManager.make_file_key(
+                "subtitle", subtitle_inputs, subtitle_fingerprint,
+            )
             if cache_manager is not None and cache_manager.exists(subtitle_cache_key, "subtitle"):
                 subtitle_file = cache_manager.restore_files(
                     subtitle_cache_key, "subtitle", args.generate_subtitles

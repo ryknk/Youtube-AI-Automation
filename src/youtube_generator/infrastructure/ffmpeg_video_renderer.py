@@ -29,6 +29,9 @@ class VideoRenderSettings:
     subtitle_font: str = "Arial"
     subtitle_size: int = 36
     subtitle_color: str = "&H00FFFFFF"
+    subtitle_position: str = "bottom"
+    subtitle_alignment: str = "center"
+    subtitle_bottom_margin: int = 80
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +123,9 @@ class FfmpegVideoRenderer(VideoRenderer):
         subtitle_style = (
             f"FontName={self._escape_style_value(self._settings.subtitle_font)},"
             f"FontSize={self._settings.subtitle_size},"
-            f"PrimaryColour={self._escape_style_value(self._settings.subtitle_color)}"
+            f"PrimaryColour={self._escape_style_value(self._settings.subtitle_color)},"
+            f"Alignment={self._subtitle_alignment()},"
+            f"MarginV={self._settings.subtitle_bottom_margin}"
         )
         filters.append(
             f"[concatenated_video]subtitles=filename='{subtitle_path}':charenc=UTF-8:"
@@ -168,3 +173,16 @@ class FfmpegVideoRenderer(VideoRenderer):
     @staticmethod
     def _escape_style_value(value: str) -> str:
         return value.replace("\\", "\\\\").replace("'", "\\'").replace(",", "\\,")
+
+    def _subtitle_alignment(self) -> int:
+        horizontal = {"left": 1, "center": 2, "right": 3}
+        vertical = {"bottom": 0, "middle": 3, "center": 3, "top": 6}
+        try:
+            return vertical[self._settings.subtitle_position.lower()] + horizontal[
+                self._settings.subtitle_alignment.lower()
+            ]
+        except KeyError as error:
+            raise ValueError(
+                "subtitles.position は bottom/middle/top、"
+                "subtitles.alignment は left/center/right を指定してください。"
+            ) from error

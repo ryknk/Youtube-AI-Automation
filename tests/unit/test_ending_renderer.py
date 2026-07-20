@@ -48,3 +48,26 @@ def test_multiple_ending_images_remain_fixed_and_are_concatenated(tmp_path: Path
     assert "zoompan" not in filters
     assert filters.count("trim=duration=3.000") == 2
     assert "[v0][v1]concat=n=2:v=1:a=0[visual]" in filters
+
+
+def test_ending_subtitle_style_uses_position_alignment_and_margin(tmp_path: Path) -> None:
+    renderer = FfmpegEndingRenderer(
+        VideoRenderSettings(
+            width=1280, height=720, fps=30, bgm_enabled=False,
+            bgm_file=tmp_path / "unused.mp3", bgm_volume=0.0,
+            subtitle_font="Noto Sans JP", subtitle_size=30,
+            subtitle_color="&H0000FFFF", subtitle_position="top",
+            subtitle_alignment="right", subtitle_bottom_margin=42,
+        )
+    )
+    request = EndingRenderRequest(
+        audio_file=tmp_path / "ending.mp3", subtitle_file=tmp_path / "ending.srt",
+        image_files=(tmp_path / "ending.png",), output_file=tmp_path / "ending.mp4",
+        duration_seconds=5.0,
+    )
+
+    command = renderer.build_command(request)
+    filters = command[command.index("-filter_complex") + 1]
+
+    assert "FontName=Noto Sans JP,FontSize=30,PrimaryColour=&H0000FFFF" in filters
+    assert "Alignment=9,MarginV=42" in filters

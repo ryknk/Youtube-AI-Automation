@@ -57,6 +57,17 @@ class TemplateManager:
         resolved_audio["voicevox"] = resolved_voicevox
         return resolved_audio
 
+    def subtitle_settings(
+        self, global_subtitle_settings: dict[str, Any], template_id: str | None = None,
+    ) -> dict[str, Any]:
+        """字幕設定を共通、default、選択テンプレートの順に解決する。"""
+        resolved = dict(global_subtitle_settings)
+        selected = self.get(template_id)
+        if selected.template_id != "default" and (self._templates_dir / "default").is_dir():
+            resolved.update(self._template_subtitle_settings(self.get("default")))
+        resolved.update(self._template_subtitle_settings(selected))
+        return resolved
+
     @staticmethod
     def _template_voicevox_settings(template: VideoTemplate) -> dict[str, Any]:
         audio = (template.video_settings or {}).get("audio", {})
@@ -68,6 +79,15 @@ class TemplateManager:
                 f"テンプレート {template.template_id} の audio.voicevox 設定が不正です。"
             )
         return voicevox
+
+    @staticmethod
+    def _template_subtitle_settings(template: VideoTemplate) -> dict[str, Any]:
+        subtitles = (template.video_settings or {}).get("subtitles", {})
+        if not isinstance(subtitles, dict):
+            raise ValueError(
+                f"テンプレート {template.template_id} の subtitles 設定が不正です。"
+            )
+        return subtitles
 
     def ending_subtitles_enabled(self, template_id: str | None = None, default: bool = True) -> bool:
         """テンプレートのエンディング字幕表示設定。未指定時はdefault、最終的にtrue。"""

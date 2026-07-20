@@ -78,6 +78,40 @@ class TemplateManagerTests(unittest.TestCase):
                     {"voicevox": {}}, "history",
                 )
 
+    def test_resolves_subtitle_settings_from_global_default_and_selected_template(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            self._write_template(root, "default", """subtitles:
+  font: Noto Sans JP
+  size: 28
+  max_lines: 2
+""")
+            self._write_template(root, "psychology", """subtitles:
+  size: 32
+  color: "&H0000FFFF"
+  max_chars_per_line: 18
+""")
+            manager = TemplateManager(root)
+
+            settings = manager.subtitle_settings({
+                "font": "Arial", "size": 24, "color": "&H00FFFFFF",
+                "max_lines": 1, "timing_mode": "character_ratio",
+            }, "psychology")
+
+        self.assertEqual(settings, {
+            "font": "Noto Sans JP", "size": 32, "color": "&H0000FFFF",
+            "max_lines": 2, "timing_mode": "character_ratio",
+            "max_chars_per_line": 18,
+        })
+
+    def test_rejects_invalid_template_subtitle_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            self._write_template(root, "psychology", "subtitles: invalid\n")
+
+            with self.assertRaisesRegex(ValueError, "subtitles"):
+                TemplateManager(root).subtitle_settings({}, "psychology")
+
 
 if __name__ == "__main__":
     unittest.main()
