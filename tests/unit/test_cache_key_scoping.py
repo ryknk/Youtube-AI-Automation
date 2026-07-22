@@ -42,6 +42,14 @@ def _subtitle_fingerprint(subtitle_values: dict, version: str) -> str:
     return CacheManager.make_key(json.dumps(subtitle_values, ensure_ascii=False, sort_keys=True), version)
 
 
+def _video_fingerprint(video_values: dict, subtitle_values: dict, bgm_cache_fingerprint: str) -> str:
+    return CacheManager.make_key(
+        json.dumps(video_values, sort_keys=True),
+        json.dumps(subtitle_values, ensure_ascii=False, sort_keys=True),
+        bgm_cache_fingerprint,
+    )
+
+
 def _narration_fingerprint(text_provider: str, text_settings: dict, tts_provider: str, audio_settings: dict) -> str:
     return CacheManager.make_key(
         text_provider, json.dumps(text_settings, ensure_ascii=False, sort_keys=True),
@@ -103,6 +111,36 @@ class SubtitleCacheKeyScopingTests(unittest.TestCase):
         before = _subtitle_fingerprint(base, "v1")
         after = _subtitle_fingerprint(changed, "v1")
         self.assertNotEqual(before, after)
+
+
+class VideoCacheKeyScopingTests(unittest.TestCase):
+    def test_subtitle_style_change_invalidates_key(self) -> None:
+        video_values = {"width": 1920, "height": 1080, "fps": 30, "output_format": "mp4"}
+        before = _video_fingerprint(video_values, {"font": "Arial"}, "bgm-fp")
+        after = _video_fingerprint(video_values, {"font": "Noto Sans JP"}, "bgm-fp")
+        self.assertNotEqual(before, after)
+
+    def test_bgm_fingerprint_change_invalidates_key(self) -> None:
+        video_values = {"width": 1920, "height": 1080, "fps": 30, "output_format": "mp4"}
+        subtitle_values = {"font": "Arial"}
+        before = _video_fingerprint(video_values, subtitle_values, "bgm-fp-a")
+        after = _video_fingerprint(video_values, subtitle_values, "bgm-fp-b")
+        self.assertNotEqual(before, after)
+
+    def test_video_dimensions_change_invalidates_key(self) -> None:
+        subtitle_values = {"font": "Arial"}
+        before = _video_fingerprint({"width": 1920, "height": 1080, "fps": 30}, subtitle_values, "bgm-fp")
+        after = _video_fingerprint({"width": 1280, "height": 720, "fps": 30}, subtitle_values, "bgm-fp")
+        self.assertNotEqual(before, after)
+
+    def test_unrelated_settings_do_not_affect_key(self) -> None:
+        video_values = {"width": 1920, "height": 1080, "fps": 30, "output_format": "mp4"}
+        subtitle_values = {"font": "Arial"}
+        # youtube.category_idのような無関係な設定はここでの引数に一切現れないため、
+        # 同じvideo/subtitle/bgm設定であればキーは常に同一になる。
+        before = _video_fingerprint(video_values, subtitle_values, "bgm-fp")
+        after = _video_fingerprint(video_values, subtitle_values, "bgm-fp")
+        self.assertEqual(before, after)
 
 
 class EndingNarrationCacheKeyScopingTests(unittest.TestCase):

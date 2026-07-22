@@ -65,6 +65,10 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--topic", help="メタデータ生成に使用する動画テーマ")
     parser.add_argument("--list-templates", action="store_true", help="利用可能なテンプレートを表示して終了")
     parser.add_argument("--script", help="品質チェックする台本文。API生成後は生成台本を渡す想定です。")
+    parser.add_argument(
+        "--force", action="store_true",
+        help="--generate-video使用時、動画キャッシュを無視して強制的に再生成します。",
+    )
     parser.add_argument("--version", action="version", version="Youtube AI Automation 0.1.0")
     parser.add_argument("--run-id", help=argparse.SUPPRESS)
     return parser
@@ -307,7 +311,30 @@ def run() -> None:
                     ),
                 ),
             )
-            video_file = GenerateVideoUseCase(renderer).execute(args.generate_video, str(video_values["output_format"]))
+            video_inputs = (
+                tuple(sorted(args.generate_video.glob("scene*.png")))
+                + tuple(sorted(args.generate_video.glob("scene*.mp3")))
+                + tuple(sorted(args.generate_video.glob("subtitles.srt")))
+            )
+            # bgm_setting.cache_fingerprintはBGMファイル内容のハッシュを既に含むため、
+            # video_inputs側でBGMファイルを重複してハッシュする必要はない。
+            video_fingerprint = CacheManager.make_key(
+                json.dumps({
+                    "width": video_values["width"], "height": video_values["height"],
+                    "fps": video_values["fps"], "output_format": video_values["output_format"],
+                }, sort_keys=True),
+                json.dumps(subtitle_values, ensure_ascii=False, sort_keys=True),
+                bgm_setting.cache_fingerprint,
+            )
+            video_cache_key = CacheManager.make_file_key("video", video_inputs, video_fingerprint)
+            if not args.force and cache_manager is not None and cache_manager.exists(video_cache_key, "video"):
+                video_file = cache_manager.restore_files(video_cache_key, "video", args.generate_video)[0]
+                logger.info("動画をキャッシュから復元しました。")
+                history.record(run_id, "cache_hit", artifact="video", cache_key=video_cache_key)
+            else:
+                video_file = GenerateVideoUseCase(renderer).execute(args.generate_video, str(video_values["output_format"]))
+                if cache_manager is not None:
+                    cache_manager.save_files(video_cache_key, "video", (video_file,))
             ending_values = video_settings.values.get("ending", {})
             if isinstance(ending_values, dict) and bool(ending_values.get("enabled", True)) and bool(ending_values.get("auto_append", True)):
                 main_file = args.generate_video / "main.mp4"

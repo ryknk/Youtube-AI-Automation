@@ -246,7 +246,13 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 文字数、想定時間、禁止表現、重複文などが`config/config.yaml`の`quality`設定に基づいて検査されます。
 
-同じ入力と設定で生成した中間成果物は`cache/`から再利用されます。工程イベントは`logs/run_history.jsonl`、実行ごとの集計は`output/history.json`、アプリケーションログは`logs/application.log`へ保存されます。
+同じ入力と設定で生成した中間成果物は`cache/`から再利用されます。`--generate-video`も、シーン画像・音声・字幕（SRT）・BGM・動画設定が変わっていなければ動画（`video.mp4`）をキャッシュから復元し、ffmpegによる再レンダリングを省略します。キャッシュを無視して強制的に再レンダリングしたい場合は`--force`を付けて実行してください。
+
+```powershell
+.\run.cmd --generate-video "$workDir" --template science --force
+```
+
+工程イベントは`logs/run_history.jsonl`、実行ごとの集計は`output/history.json`、アプリケーションログは`logs/application.log`へ保存されます。
 
 ## テンプレート共通エンディング
 
