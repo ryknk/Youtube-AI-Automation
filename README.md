@@ -250,7 +250,7 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 ## テンプレート共通エンディング
 
-各テンプレート配下を再帰的に検索し、ファイル名が大文字・小文字を問わず`ending`で始まる`.txt`、`.png`、`.jpg`、`.jpeg`、`.webp`だけを共通エンディングの素材として利用します。たとえば`ending_message.txt`、`ending_logo.png`、`assets/ending_background.jpg`を配置できます。テキストは口調・チャンネル方針の文脈、画像は背景やロゴ等として扱われます。生成結果は`generated_assets/endings/<template>/`に保存され、素材・動画スタイル・エンディング設定・字幕/BGM設定・`config/config.yaml`全体の内容から計算したSHA-256ハッシュが一致する限り再利用されます。TTS設定の変更は`config/config.yaml`全体のハッシュを通じて間接的にキャッシュへ反映されます。なお、エンディングの音声生成には本編のようなテンプレート別VOICEVOX上書きは適用されません。
+各テンプレート配下を再帰的に検索し、ファイル名が大文字・小文字を問わず`ending`で始まる`.txt`、`.png`、`.jpg`、`.jpeg`、`.webp`だけを共通エンディングの素材として利用します。たとえば`ending_message.txt`、`ending_logo.png`、`assets/ending_background.jpg`を配置できます。テキストは口調・チャンネル方針の文脈、画像は背景やロゴ等として扱われます。生成結果は`generated_assets/endings/<template>/`に保存され、素材・動画スタイル・エンディング設定・字幕/BGM設定・音声（TTS）設定から計算したSHA-256ハッシュが一致する限り再利用されます。エンディングのナレーションも本編と同様にテンプレート別VOICEVOX設定（`video.yaml`の`audio.voicevox`上書き）が適用され、対象テンプレートの音声設定を変更するとそのテンプレートのエンディングキャッシュだけが無効になります。
 
 ```powershell
 .\run.cmd ending generate --template zatsugaku

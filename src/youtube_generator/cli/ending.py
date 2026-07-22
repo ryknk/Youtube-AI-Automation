@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from typing import Any
 
 from youtube_generator.config import load_settings
 from youtube_generator.ending.manager import EndingManager, EndingSettings
@@ -10,6 +11,7 @@ from youtube_generator.infrastructure.cache import CacheManager
 from youtube_generator.infrastructure.ffmpeg_video_renderer import VideoRenderSettings
 from youtube_generator.infrastructure.ffprobe_audio_duration_provider import FfprobeAudioDurationProvider
 from youtube_generator.logger import configure_logging, get_logger
+from youtube_generator.plugins.base.tts_provider import TTSProvider
 from youtube_generator.plugins.manager import PluginManager
 from youtube_generator.services.quality_checker import QualityChecker, load_quality_rules
 from youtube_generator.services.retry import RetryPolicy
@@ -51,11 +53,20 @@ def create_ending_manager() -> EndingManager:
     bgm_manager = BGMManager(templates, bgm, settings.config_dir.parent)
     # エンディングのナレーションは text（台本生成）と tts（音声合成）の設定にのみ依存する。
     # config.yaml全体のハッシュを使うと無関係な設定変更でもエンディングキャッシュが無効になるため、
-    # 関係する設定だけをハッシュ対象にする。
+    # 関係する設定だけをハッシュ対象にする。audio自体はテンプレート別に解決されるため、
+    # ここでは共通のプロバイダー選択のみを含め、実際の値はasset_fingerprint_for_templateで扱う。
     narration_fingerprint = CacheManager.make_key(
         str(providers.get("text")), json.dumps(text, ensure_ascii=False, sort_keys=True),
-        str(providers.get("tts")), json.dumps(audio, ensure_ascii=False, sort_keys=True),
+        str(providers.get("tts")),
     )
+
+    def resolve_audio_settings(template_id: str) -> dict[str, Any]:
+        if str(providers.get("tts", "")).lower() == "voicevox":
+            return templates.voicevox_audio_settings(audio, template_id)
+        return audio
+
+    def tts_provider_for_template(template_id: str) -> TTSProvider:
+        return plugin_manager.create_tts_provider(resolve_audio_settings(template_id), retry_policy)
 
     def renderer_for_template(template_id: str) -> FfmpegEndingRenderer:
         bgm_setting = bgm_manager.resolve(template_id, "ending")
@@ -92,7 +103,10 @@ def create_ending_manager() -> EndingManager:
             templates.subtitle_settings(subtitles, template_id),
             ensure_ascii=False, sort_keys=True,
         ))
-        return CacheManager.make_key(bgm_fingerprint, subtitle_fingerprint)
+        audio_fingerprint = CacheManager.make_key(json.dumps(
+            resolve_audio_settings(template_id), ensure_ascii=False, sort_keys=True,
+        ))
+        return CacheManager.make_key(bgm_fingerprint, subtitle_fingerprint, audio_fingerprint)
 
     return EndingManager(
         templates, settings.config_dir.parent / "generated_assets" / "endings",
@@ -100,7 +114,7 @@ def create_ending_manager() -> EndingManager:
         FfprobeAudioDurationProvider(settings.ffprobe_executable), SrtBuilder(), FfmpegEndingRenderer(renderer_settings),
         QualityChecker(load_quality_rules(quality)), EndingSettings.from_config(values.get("ending", {})),
         cache, narration_fingerprint, renderer_for_template,
-        asset_fingerprint_for_template,
+        asset_fingerprint_for_template, tts_provider_for_template,
     )
 
 

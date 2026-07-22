@@ -100,6 +100,7 @@ class EndingManager:
         settings_fingerprint: str = "",
         renderer_for_template: Callable[[str], EndingRenderer] | None = None,
         asset_fingerprint_for_template: Callable[[str], str] | None = None,
+        tts_provider_for_template: Callable[[str], TTSProvider] | None = None,
     ) -> None:
         self._templates = templates
         self._generated_root = generated_root
@@ -114,6 +115,7 @@ class EndingManager:
         self._settings_fingerprint = settings_fingerprint
         self._renderer_for_template = renderer_for_template
         self._asset_fingerprint_for_template = asset_fingerprint_for_template
+        self._tts_provider_for_template = tts_provider_for_template
         self._logger = get_logger(__name__)
 
     def collect_materials(self, template_id: str) -> TemplateMaterials:
@@ -170,7 +172,7 @@ class EndingManager:
         subtitle_file = asset_dir / "ending_subtitle.srt"
         video_file = asset_dir / "ending.mp4"
         script_file.write_text(narration + "\n", encoding="utf-8")
-        self._tts_provider.generate_speech(narration, audio_file)
+        self._tts_provider_for(template.template_id).generate_speech(narration, audio_file)
         duration = self._duration_provider.get_duration_seconds(audio_file)
         if subtitles_enabled:
             self._logger.info("エンディング字幕を生成します: template=%s", template.template_id)
@@ -287,6 +289,9 @@ class EndingManager:
 
     def _renderer_for(self, template_id: str) -> EndingRenderer:
         return self._renderer_for_template(template_id) if self._renderer_for_template else self._renderer
+
+    def _tts_provider_for(self, template_id: str) -> TTSProvider:
+        return self._tts_provider_for_template(template_id) if self._tts_provider_for_template else self._tts_provider
 
     @classmethod
     def _is_ending_material(cls, file_path: Path, extensions: set[str]) -> bool:

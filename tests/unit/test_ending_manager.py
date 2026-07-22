@@ -23,8 +23,13 @@ class FakeTextGenerator:
 
 
 class FakeTTS:
+    def __init__(self, label: str = "default") -> None:
+        self.label = label
+        self.calls: list[str] = []
+
     def generate_speech(self, text: str, output_file: Path) -> None:
-        output_file.write_bytes(b"fake-mp3")
+        self.calls.append(text)
+        output_file.write_bytes(f"fake-mp3:{self.label}".encode())
 
 
 class FakeDuration:
@@ -136,6 +141,52 @@ def test_appends_ending_to_main_video(tmp_path):
     final = manager.append_to(main, "science", tmp_path / "final.mp4")
 
     assert final.read_bytes() == b"mainfake-mp4"
+
+
+def test_uses_template_specific_tts_provider_when_configured(tmp_path):
+    """tts_provider_for_templateが指定されている場合、テンプレート別のTTSを使用する（本編と同様の挙動）。"""
+    templates_root = tmp_path / "templates"
+    _write_template(templates_root, template_id="science")
+    generator = FakeTextGenerator()
+    renderer = FakeRenderer()
+    fallback_tts = FakeTTS(label="fallback-should-not-be-used")
+    template_tts = FakeTTS(label="science-voice")
+    manager = EndingManager(
+        TemplateManager(templates_root), tmp_path / "generated", generator, fallback_tts, FakeDuration(),
+        SrtBuilder(), renderer, QualityChecker(QualityRules(1, 4000, 6, (), 2)),
+        EndingSettings(min_duration=3, max_duration=8, image_mode="sequence"),
+        CacheManager(tmp_path / "cache"), "test-settings", None, None,
+        tts_provider_for_template=lambda template_id: template_tts,
+    )
+
+    asset = manager.ensure("science")
+
+    assert asset is not None
+    assert asset.audio_file.read_bytes() == b"fake-mp3:science-voice"
+    assert fallback_tts.calls == []
+    assert template_tts.calls == ["今回の内容が役立ったなら、また次の動画でお会いしましょう。"]
+
+
+def test_asset_fingerprint_change_regenerates_ending(tmp_path):
+    """asset_fingerprint_for_template（テンプレート別音声設定を含む）が変わると再生成される。"""
+    templates_root = tmp_path / "templates"
+    _write_template(templates_root, template_id="science")
+    generator = FakeTextGenerator()
+    renderer = FakeRenderer()
+    fingerprint_value = ["voice-a"]
+    manager = EndingManager(
+        TemplateManager(templates_root), tmp_path / "generated", generator, FakeTTS(), FakeDuration(),
+        SrtBuilder(), renderer, QualityChecker(QualityRules(1, 4000, 6, (), 2)),
+        EndingSettings(min_duration=3, max_duration=8, image_mode="sequence"),
+        CacheManager(tmp_path / "cache"), "test-settings", None,
+        asset_fingerprint_for_template=lambda template_id: fingerprint_value[0],
+    )
+
+    manager.ensure("science")
+    fingerprint_value[0] = "voice-b"
+    manager.ensure("science")
+
+    assert generator.calls == 2
 
 
 def test_delete_removes_generated_asset_and_cache(tmp_path):
