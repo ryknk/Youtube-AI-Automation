@@ -46,3 +46,56 @@ class PluginManagerTests(unittest.TestCase):
             image_settings, RetryPolicy(max_attempts=1), size_setting="thumbnail_size"
         )
         self.assertEqual(provider_class.call_args.args[1:3], ("flux-2-max", "1280x720"))
+
+    def test_create_text_generator_rejects_unsupported_provider(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"text": "unknown"}, {})
+
+        with self.assertRaisesRegex(ValueError, "未対応のtextプロバイダー"):
+            manager.create_text_generator(RetryPolicy(max_attempts=1))
+
+    def test_create_scene_splitter_rejects_unsupported_text_provider(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"text": "unknown"}, {})
+
+        with self.assertRaisesRegex(ValueError, "未対応のtextプロバイダー"):
+            manager.create_scene_splitter(RetryPolicy(max_attempts=1))
+
+    def test_create_scene_splitter_rejects_text_provider_without_scene_split_support(self) -> None:
+        """openai以外のTextGeneratorが将来追加された場合に備えた分岐（現状は到達不能）を検証する。"""
+        manager = PluginManager(
+            Settings(openai_api_key="test-key"), {"text": "openai"},
+            {"script_model": "gpt-5.6", "scene_split_model": "gpt-5.6", "metadata_model": "gpt-5.6"},
+        )
+
+        with patch.object(manager, "create_text_generator", return_value=object()):
+            with self.assertRaisesRegex(ValueError, "シーン分割"):
+                manager.create_scene_splitter(RetryPolicy(max_attempts=1))
+
+    def test_create_tts_provider_rejects_unsupported_provider(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"tts": "unknown"}, {})
+
+        with self.assertRaisesRegex(ValueError, "未対応のttsプロバイダー"):
+            manager.create_tts_provider({}, RetryPolicy(max_attempts=1))
+
+    def test_create_image_provider_rejects_unsupported_provider(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"image": "unknown"}, {})
+
+        with self.assertRaisesRegex(ValueError, "未対応のimageプロバイダー"):
+            manager.create_image_provider({}, RetryPolicy(max_attempts=1))
+
+    def test_create_metadata_generator_rejects_unsupported_provider(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"text": "unknown"}, {})
+
+        with self.assertRaisesRegex(ValueError, "未対応のtextプロバイダー"):
+            manager.create_metadata_generator(RetryPolicy(max_attempts=1), title_count=5)
+
+    def test_provider_name_rejects_empty_string(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"tts": ""}, {})
+
+        with self.assertRaisesRegex(ValueError, "providers.tts"):
+            manager.create_tts_provider({}, RetryPolicy(max_attempts=1))
+
+    def test_provider_name_requires_category_present(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {}, {})
+
+        with self.assertRaisesRegex(ValueError, "providers.image"):
+            manager.create_image_provider({}, RetryPolicy(max_attempts=1))
