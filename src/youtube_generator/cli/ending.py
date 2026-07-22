@@ -49,6 +49,13 @@ def create_ending_manager() -> EndingManager:
     cache_values = values["cache"]
     cache = CacheManager(settings.cache_dir) if isinstance(cache_values, dict) and bool(cache_values["enabled"]) else None
     bgm_manager = BGMManager(templates, bgm, settings.config_dir.parent)
+    # エンディングのナレーションは text（台本生成）と tts（音声合成）の設定にのみ依存する。
+    # config.yaml全体のハッシュを使うと無関係な設定変更でもエンディングキャッシュが無効になるため、
+    # 関係する設定だけをハッシュ対象にする。
+    narration_fingerprint = CacheManager.make_key(
+        str(providers.get("text")), json.dumps(text, ensure_ascii=False, sort_keys=True),
+        str(providers.get("tts")), json.dumps(audio, ensure_ascii=False, sort_keys=True),
+    )
 
     def renderer_for_template(template_id: str) -> FfmpegEndingRenderer:
         bgm_setting = bgm_manager.resolve(template_id, "ending")
@@ -92,7 +99,7 @@ def create_ending_manager() -> EndingManager:
         plugin_manager.create_text_generator(retry_policy), plugin_manager.create_tts_provider(audio, retry_policy),
         FfprobeAudioDurationProvider(settings.ffprobe_executable), SrtBuilder(), FfmpegEndingRenderer(renderer_settings),
         QualityChecker(load_quality_rules(quality)), EndingSettings.from_config(values.get("ending", {})),
-        cache, config.fingerprint, renderer_for_template,
+        cache, narration_fingerprint, renderer_for_template,
         asset_fingerprint_for_template,
     )
 

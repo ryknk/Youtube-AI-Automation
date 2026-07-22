@@ -349,7 +349,6 @@ def run() -> None:
                 + tuple(sorted(args.generate_subtitles.glob("scene*.alignment.json")))
             )
             subtitle_fingerprint = CacheManager.make_key(
-                video_settings.fingerprint,
                 json.dumps(subtitle_values, ensure_ascii=False, sort_keys=True),
                 SUBTITLE_SPLITTER_VERSION,
             )
@@ -395,7 +394,12 @@ def run() -> None:
                 RetryPolicy.from_settings(retry_settings),
                 max_scenes=int(scene_settings["max_count"]),
             )
-            scene_cache_key = CacheManager.make_file_key("scene", (args.split_script,), video_settings.fingerprint)
+            scene_fingerprint = CacheManager.make_key(
+                str(provider_settings.get("text")),
+                json.dumps(text_settings, ensure_ascii=False, sort_keys=True),
+                json.dumps(scene_settings, ensure_ascii=False, sort_keys=True),
+            )
+            scene_cache_key = CacheManager.make_file_key("scene", (args.split_script,), scene_fingerprint)
             if cache_manager is not None and cache_manager.exists(scene_cache_key, "scene"):
                 scene_files = cache_manager.restore_files(scene_cache_key, "scene", args.split_script.parent)
                 logger.info("シーンをキャッシュから復元しました。")
@@ -437,7 +441,7 @@ def run() -> None:
             )
             audio_inputs = tuple(sorted(args.generate_audio.glob("scene*.txt")))
             audio_fingerprint = CacheManager.make_key(
-                video_settings.fingerprint,
+                str(provider_settings.get("tts")),
                 json.dumps(audio_settings, ensure_ascii=False, sort_keys=True),
             )
             audio_cache_key = CacheManager.make_file_key(
@@ -519,7 +523,9 @@ def run() -> None:
             )
             image_inputs = tuple(sorted(args.generate_images.glob("scene*.txt")))
             image_fingerprint = CacheManager.make_key(
-                video_settings.fingerprint, "image-prompt-v2", image_style,
+                str(provider_settings.get("image")),
+                json.dumps(image_settings, ensure_ascii=False, sort_keys=True),
+                "image-prompt-v2", image_style,
             )
             image_cache_key = CacheManager.make_file_key("image", image_inputs, image_fingerprint)
             if cache_manager is not None and cache_manager.exists(image_cache_key, "image"):
@@ -556,7 +562,9 @@ def run() -> None:
                 raise ValueError("config.yaml の retry 設定が不正です。")
             generator = plugin_manager.create_text_generator(RetryPolicy.from_settings(retry_settings))
             script_cache_key = CacheManager.make_key(
-                "script", args.theme, template.template_id, video_settings.fingerprint
+                "script", args.theme, template.template_id,
+                str(provider_settings.get("text")),
+                json.dumps(text_settings, ensure_ascii=False, sort_keys=True),
             )
             script_output_dir = GenerateScriptUseCase.output_directory(
                 settings.output_dir, args.theme, template, run_id
