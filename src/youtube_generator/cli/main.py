@@ -194,9 +194,16 @@ def run() -> None:
                 logger.warning("動画テーマが未指定のため、タイトル生成でテーマを「未指定」として扱います。")
             title_prompt = template.title_instruction
             use_case = GenerateMetadataUseCase(generator)
+            # fingerprintはタイトル・詳細情報の両方に影響するtext設定、title_fingerprintは
+            # タイトル生成のみに影響するmetadata設定（title_count等）に限定する。
+            metadata_fingerprint = CacheManager.make_key(
+                str(provider_settings.get("text")),
+                json.dumps(text_settings, ensure_ascii=False, sort_keys=True),
+            )
+            title_fingerprint = json.dumps(metadata_settings, ensure_ascii=False, sort_keys=True)
             cache_result = use_case.execute_cached(
                 args.generate_metadata, cache_manager,
-                fingerprint=video_settings.fingerprint, topic=topic,
+                fingerprint=metadata_fingerprint, title_fingerprint=title_fingerprint, topic=topic,
                 template_id=template.template_id, template_name=template.display_name,
                 title_prompt=title_prompt,
             )

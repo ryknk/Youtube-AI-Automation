@@ -66,15 +66,19 @@ class GenerateMetadataUseCase:
     def execute_cached(
         self, project_dir: Path, cache_manager: CacheManager | None, *,
         fingerprint: str, topic: str, template_id: str, template_name: str,
-        title_prompt: str | None,
+        title_prompt: str | None, title_fingerprint: str = "",
     ) -> MetadataCacheResult:
-        """タイトルとその他のメタデータを別々にキャッシュする。"""
+        """タイトルとその他のメタデータを別々にキャッシュする。
+
+        ``fingerprint``はタイトル・詳細情報の両方に影響する設定（textプロバイダー・モデル）、
+        ``title_fingerprint``はタイトル生成のみに影響する設定（例: 生成候補数）を渡す。
+        """
         prompt = title_prompt or ""
         prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         script_file = project_dir / "script.txt"
         titles_key = CacheManager.make_file_key(
             "metadata_titles", (script_file,),
-            f"{fingerprint}:{template_id}:{topic}:{prompt_hash}",
+            f"{fingerprint}:{title_fingerprint}:{template_id}:{topic}:{prompt_hash}",
         )
         details_key = CacheManager.make_file_key(
             "metadata_details", (script_file,), fingerprint,

@@ -168,6 +168,53 @@ class GenerateMetadataTests(unittest.TestCase):
                 "titles.txt", "description.txt", "tags.txt", "hashtags.txt", "thumbnail_copies.txt",
             })
 
+    def test_title_fingerprint_change_regenerates_only_titles(self) -> None:
+        """title_count等タイトル専用設定の変更は、titlesのみを再生成しdetailsは再利用する。"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project_dir = root / "project"
+            project_dir.mkdir()
+            (project_dir / "script.txt").write_text("同じ台本", encoding="utf-8")
+            cache = CacheManager(root / "cache")
+            fake = FakeMetadataGenerator()
+            use_case = GenerateMetadataUseCase(fake)
+
+            first = use_case.execute_cached(
+                project_dir, cache, fingerprint="text-settings", title_fingerprint="title_count=3",
+                topic="家康", template_id="history", template_name="歴史", title_prompt="人物名を含める",
+            )
+            changed = use_case.execute_cached(
+                project_dir, cache, fingerprint="text-settings", title_fingerprint="title_count=10",
+                topic="家康", template_id="history", template_name="歴史", title_prompt="人物名を含める",
+            )
+
+            self.assertNotEqual(first.titles_cache_key, changed.titles_cache_key)
+            self.assertEqual(first.details_cache_key, changed.details_cache_key)
+            self.assertTrue(changed.details_cache_hit)
+
+    def test_unrelated_fingerprint_component_does_not_change_keys(self) -> None:
+        """呼び出し側でfingerprintに無関係な設定を含めなければ、無関係な設定変更はキーへ影響しない。"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project_dir = root / "project"
+            project_dir.mkdir()
+            (project_dir / "script.txt").write_text("同じ台本", encoding="utf-8")
+            cache = CacheManager(root / "cache")
+            fake = FakeMetadataGenerator()
+            use_case = GenerateMetadataUseCase(fake)
+
+            first = use_case.execute_cached(
+                project_dir, cache, fingerprint="text-settings", title_fingerprint="title_count=3",
+                topic="家康", template_id="history", template_name="歴史", title_prompt="人物名を含める",
+            )
+            same = use_case.execute_cached(
+                project_dir, cache, fingerprint="text-settings", title_fingerprint="title_count=3",
+                topic="家康", template_id="history", template_name="歴史", title_prompt="人物名を含める",
+            )
+
+            self.assertEqual(first.titles_cache_key, same.titles_cache_key)
+            self.assertEqual(first.details_cache_key, same.details_cache_key)
+
 
 if __name__ == "__main__":
     unittest.main()
