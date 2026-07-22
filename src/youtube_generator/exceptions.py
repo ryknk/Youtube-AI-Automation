@@ -21,6 +21,10 @@ class SubtitleGenerationError(RuntimeError):
     """音声長の取得またはSRT字幕の生成に失敗した場合の例外。"""
 
 
+class AlignmentGenerationError(RuntimeError):
+    """音声と台本のアライメント生成に失敗した場合の例外。"""
+
+
 class VideoRenderingError(RuntimeError):
     """FFmpegによる動画の生成に失敗した場合の例外。"""
 

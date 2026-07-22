@@ -111,8 +111,14 @@ subtitles:
   min_chars_per_segment: 6
   # alignment: sceneNN.alignment.json を優先。未配置・不正時は character_ratio へフォールバック
   timing_mode: alignment
+  # timing_mode: alignment 時に sceneNN.alignment.json を生成するプロバイダー設定
+  alignment_provider:
+    provider: stable_ts
+    language: ja
+    model: base
   fallback_timing_mode: character_ratio
   position: bottom
+  # 字幕の水平配置（center / left / right）。上のalignment_providerとは無関係
   alignment: center
   bottom_margin: 80
   # 字幕を囲む背景ボックスを表示するか

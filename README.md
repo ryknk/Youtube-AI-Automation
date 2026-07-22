@@ -105,7 +105,7 @@ audio:
     post_phoneme_length: 0.1
 ```
 
-`base_url`と`timeout`もテンプレート側で上書きできます。設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。VOICEVOX設定を変更すると、対象テンプレートの音声キャッシュだけが無効になります。テンプレート側でTTSプロバイダー自体を切り替えることはできません。
+`base_url`と`timeout`もテンプレート側で上書きできます。設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。テンプレート側の`video.yaml`でVOICEVOX設定を変更した場合は、対象テンプレートの音声キャッシュだけが無効になります。`config/config.yaml`側の共通設定を変更した場合は、`config.yaml`全体のハッシュを台本・シーン分割・音声・画像・字幕の各キャッシュキーが共有しているため、音声キャッシュだけでなく他の工程のキャッシュもあわせて無効になります。テンプレート側でTTSプロバイダー自体を切り替えることはできません。
 
 ### テンプレート別字幕設定
 
@@ -130,7 +130,47 @@ subtitles:
   background_opacity: 0.6
 ```
 
-設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。`box_enabled`を`true`にすると字幕の周囲に背景ボックスを表示します。`background_color`は`#RRGGBB`またはASS形式、`background_opacity`は`0.0`（透明）～`1.0`（不透明）で指定します。背景色と透明度は、本編とエンディングの両方に反映されます。テンプレート別字幕設定は本編の字幕分割・動画描画とエンディングの字幕スタイルに反映されます。変更時は字幕と字幕を含む動画のみが更新対象です。エンディング字幕の表示・非表示は、従来どおり`ending.subtitles.enabled`で個別に設定します。
+設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。`box_enabled`を`true`にすると字幕の周囲に背景ボックスを表示します。`background_color`は`#RRGGBB`またはASS形式、`background_opacity`は`0.0`（透明）～`1.0`（不透明）で指定します。背景色と透明度は、本編とエンディングの両方に反映されます。テンプレート別字幕設定は本編の字幕分割・動画描画とエンディングの字幕スタイルに反映されます。字幕（SRT）はキャッシュされ、字幕設定を変更すると字幕キャッシュのみが無効になります。動画（MP4）はキャッシュ対象外のため、字幕キャッシュの有無にかかわらず`--generate-video`実行のたびに再生成されます。エンディング字幕の表示・非表示は、従来どおり`ending.subtitles.enabled`で個別に設定します。
+
+### stable-tsによる字幕タイミングのアライメント
+
+`subtitles.timing_mode`が`alignment`の場合、音声生成（`--generate-audio`）の直後に、生成済みの音声（`sceneNN.mp3`）と元台本（`sceneNN.txt`）を[stable-ts](https://github.com/jianfch/stable-ts)で強制アライメント（Whisperによる文字起こしは行わず、既知の台本テキストを音声へ整合させる処理）し、`sceneNN.alignment.json`を生成します。字幕分割（`SubtitleSplitter`）で作成した各字幕セグメントは、このJSONの単語単位タイムスタンプを使って文字数比率方式より高精度な開始・終了時刻へ補正されます。
+
+導入には`requirements.txt`に含まれる`stable-ts`（PyPI: `stable-ts`、importは`stable_whisper`）が必要です。
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+`config/config.yaml`の`subtitles.alignment_provider`でプロバイダーを設定します（字幕の水平配置を表す既存の`subtitles.alignment`(`center`/`left`/`right`)とは別のキーです）。
+
+```yaml
+subtitles:
+  timing_mode: alignment
+  alignment_provider:
+    provider: stable_ts
+    language: ja
+    model: base
+  fallback_timing_mode: character_ratio
+```
+
+`model`にはstable-ts（Whisper）のモデルサイズ（`tiny`/`base`/`small`/`medium`/`large`など）を指定します。値が大きいほど精度は上がりますが、初回実行時のモデルダウンロードと処理時間が増えます。テンプレート側`video.yaml`で`alignment_provider`を上書きする場合、設定は項目単位ではなくブロック単位で置き換わるため、`provider`・`language`・`model`をすべて記述してください。
+
+`sceneNN.alignment.json`の形式は次のとおりです。
+
+```json
+{
+  "provider": "stable_ts",
+  "text": "元台本の全文",
+  "units": [
+    {"text": "単語やフレーズ", "start": 0.00, "end": 0.50}
+  ]
+}
+```
+
+アライメントの生成は`provider`・`model`・`language`・音声ファイル・元台本の内容からキャッシュされ、これらが変わらない限り再実行されません。`alignment_provider`の設定や音声（VOICEVOX設定変更など）が変わった場合は、`sceneNN.alignment.json`と字幕（SRT）のみが再生成されます。台本・画像・音声そのものは影響を受けません（動画はもともとキャッシュ対象外のため、`--generate-video`実行時に毎回作成されます）。
+
+stable-tsが未インストール、またはアライメントに失敗した場合でも音声生成・動画生成は停止しません。失敗したシーンは`sceneNN.alignment.json`が作成されず、字幕生成時に自動的に`fallback_timing_mode`（既定: `character_ratio`）へフォールバックします。
 
 ## ジョブキューで動画を生成する
 
@@ -210,7 +250,7 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 ## テンプレート共通エンディング
 
-各テンプレート配下を再帰的に検索し、ファイル名が大文字・小文字を問わず`ending`で始まる`.txt`、`.png`、`.jpg`、`.jpeg`、`.webp`だけを共通エンディングの素材として利用します。たとえば`ending_message.txt`、`ending_logo.png`、`assets/ending_background.jpg`を配置できます。テキストは口調・チャンネル方針の文脈、画像は背景やロゴ等として扱われます。生成結果は`generated_assets/endings/<template>/`に保存され、素材・TTS・動画・エンディング設定から計算したSHA-256ハッシュが一致する限り再利用されます。
+各テンプレート配下を再帰的に検索し、ファイル名が大文字・小文字を問わず`ending`で始まる`.txt`、`.png`、`.jpg`、`.jpeg`、`.webp`だけを共通エンディングの素材として利用します。たとえば`ending_message.txt`、`ending_logo.png`、`assets/ending_background.jpg`を配置できます。テキストは口調・チャンネル方針の文脈、画像は背景やロゴ等として扱われます。生成結果は`generated_assets/endings/<template>/`に保存され、素材・動画スタイル・エンディング設定・字幕/BGM設定・`config/config.yaml`全体の内容から計算したSHA-256ハッシュが一致する限り再利用されます。TTS設定の変更は`config/config.yaml`全体のハッシュを通じて間接的にキャッシュへ反映されます。なお、エンディングの音声生成には本編のようなテンプレート別VOICEVOX上書きは適用されません。
 
 ```powershell
 .\run.cmd ending generate --template zatsugaku
@@ -271,7 +311,7 @@ final_render:
   keep_intermediate: true
 ```
 
-`combined_without_bgm.mp4`は中間ファイルです。`final_render.keep_intermediate`を`false`にすると、`final.mp4`作成後に削除します。最終ミックスはmain・ending・BGM・エンコード設定の内容ハッシュでキャッシュするため、BGM変更時はmain／endingを再生成せずfinalだけを再作成します。
+`combined_without_bgm.mp4`は中間ファイルです。`final_render.keep_intermediate`を`false`にすると、`final.mp4`作成後に削除します。最終ミックスはmain・ending・BGM・エンコード設定の内容ハッシュでキャッシュするため、BGM変更時はmain／endingを再生成せずfinalだけを再作成します。`render remix-bgm`は`render final`のエイリアスで、実装上は同一の処理を実行します（BGMのみを変更した場合の再生成であることを示す呼び出し名として使い分けてください）。
 
 ```powershell
 .\run.cmd render final <job_id>

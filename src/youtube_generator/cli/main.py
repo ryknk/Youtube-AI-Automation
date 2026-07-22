@@ -21,6 +21,7 @@ from youtube_generator.app.generate_video import GenerateVideoUseCase
 from youtube_generator.app.generate_metadata import GenerateMetadataUseCase
 from youtube_generator.app.generate_thumbnail import GenerateThumbnailUseCase
 from youtube_generator.config import load_settings
+from youtube_generator.exceptions import AlignmentGenerationError
 from youtube_generator.infrastructure.cache import CacheManager
 from youtube_generator.infrastructure.history import RunHistoryRecorder
 from youtube_generator.logger import Logger, configure_logging, get_logger, set_active_logger
@@ -40,6 +41,7 @@ from youtube_generator.services.template_service import TemplateManager
 from youtube_generator.services.video_settings import load_video_settings
 from youtube_generator.services.bgm_manager import BGMManager
 from youtube_generator.infrastructure.final_bgm_renderer import FinalBGMRenderer, FinalRenderSettings
+from youtube_generator.plugins.alignment.factory import create_alignment_provider
 from youtube_generator.plugins.manager import PluginManager
 from youtube_generator.cli.ending import run_ending
 from youtube_generator.cli.ending import create_ending_manager
@@ -341,8 +343,10 @@ def run() -> None:
                 subtitle_values.get("size"), subtitle_values.get("segmentation_mode"),
                 subtitle_values.get("timing_mode"),
             )
-            subtitle_inputs = tuple(sorted(args.generate_subtitles.glob("scene*.mp3"))) + tuple(
-                sorted(args.generate_subtitles.glob("scene*.txt"))
+            subtitle_inputs = (
+                tuple(sorted(args.generate_subtitles.glob("scene*.mp3")))
+                + tuple(sorted(args.generate_subtitles.glob("scene*.txt")))
+                + tuple(sorted(args.generate_subtitles.glob("scene*.alignment.json")))
             )
             subtitle_fingerprint = CacheManager.make_key(
                 video_settings.fingerprint,
@@ -449,6 +453,49 @@ def run() -> None:
                     cache_manager.save_files(audio_cache_key, "voice", audio_files)
             logger.info("%d件のMP3ファイルを生成しました。", len(audio_files))
             history.record(run_id, "scene_audio_generated", audio_count=len(audio_files))
+
+            global_subtitle_values = video_settings.values["subtitles"]
+            if not isinstance(global_subtitle_values, dict):
+                raise ValueError("config.yaml の subtitles 設定が不正です。")
+            subtitle_values = templates.subtitle_settings(global_subtitle_values, template.template_id)
+            if str(subtitle_values.get("timing_mode", "character_ratio")) == "alignment":
+                alignment_provider_settings = subtitle_values.get("alignment_provider", {})
+                if not isinstance(alignment_provider_settings, dict):
+                    raise ValueError("config.yaml の subtitles.alignment_provider 設定が不正です。")
+                scene_text_files = tuple(sorted(args.generate_audio.glob("scene*.txt")))
+                alignment_fingerprint = CacheManager.make_key(
+                    str(alignment_provider_settings.get("provider", "stable_ts")),
+                    str(alignment_provider_settings.get("model", "base")),
+                    str(alignment_provider_settings.get("language", "ja")),
+                )
+                alignment_cache_key = CacheManager.make_file_key(
+                    "alignment", audio_files + scene_text_files, alignment_fingerprint,
+                )
+                if cache_manager is not None and cache_manager.exists(alignment_cache_key, "alignment"):
+                    cache_manager.restore_files(alignment_cache_key, "alignment", args.generate_audio)
+                    logger.info("アライメント結果をキャッシュから復元しました。")
+                    history.record(run_id, "cache_hit", artifact="alignment", cache_key=alignment_cache_key)
+                else:
+                    alignment_provider = create_alignment_provider(alignment_provider_settings)
+                    alignment_files: list[Path] = []
+                    for audio_file in audio_files:
+                        script_text = audio_file.with_suffix(".txt").read_text(encoding="utf-8")
+                        alignment_file = audio_file.with_suffix(".alignment.json")
+                        try:
+                            alignment_provider.align(audio_file, script_text, alignment_file)
+                            alignment_files.append(alignment_file)
+                        except AlignmentGenerationError:
+                            logger.exception(
+                                "アライメント生成に失敗したため、該当シーンはcharacter_ratioへ"
+                                "フォールバックします: %s",
+                                audio_file,
+                            )
+                    if alignment_files and cache_manager is not None:
+                        cache_manager.save_files(alignment_cache_key, "alignment", tuple(alignment_files))
+                    history.record(run_id, "alignment_generated", alignment_count=len(alignment_files))
+                    for file_path in alignment_files:
+                        execution_logger.add_generated_file(file_path)
+
             history.record(run_id, "run_completed")
             for file_path in audio_files:
                 execution_logger.add_generated_file(file_path)
