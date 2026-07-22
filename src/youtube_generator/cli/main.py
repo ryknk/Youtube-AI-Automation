@@ -464,13 +464,17 @@ def run() -> None:
             image_generator = plugin_manager.create_image_provider(
                 image_settings, RetryPolicy.from_settings(retry_settings)
             )
+            image_style = template.image_style or str(image_settings["style"])
             use_case = GenerateSceneImagesUseCase(
-                ImagePromptBuilder(template.image_style or str(image_settings["style"])),
+                ImagePromptBuilder(image_style),
                 image_generator,
                 max_images=int(image_settings["max_count"]),
             )
             image_inputs = tuple(sorted(args.generate_images.glob("scene*.txt")))
-            image_cache_key = CacheManager.make_file_key("image", image_inputs, video_settings.fingerprint)
+            image_fingerprint = CacheManager.make_key(
+                video_settings.fingerprint, "image-prompt-v2", image_style,
+            )
+            image_cache_key = CacheManager.make_file_key("image", image_inputs, image_fingerprint)
             if cache_manager is not None and cache_manager.exists(image_cache_key, "image"):
                 image_files = cache_manager.restore_files(image_cache_key, "image", args.generate_images)
                 logger.info("画像をキャッシュから復元しました。")

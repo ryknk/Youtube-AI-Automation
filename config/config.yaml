@@ -34,7 +34,7 @@ image:
   # シーン画像の生成に使用するモデル
   scene_model: flux-2-pro
   # サムネイル画像の生成に使用する高品質モデル
-  thumbnail_model: flux-2-max
+  thumbnail_model: flux-2-pro
   # OpenAI画像プロバイダーへ戻した場合に使用するモデル
   openai_model: gpt-image-2
   # シーン画像の生成サイズ

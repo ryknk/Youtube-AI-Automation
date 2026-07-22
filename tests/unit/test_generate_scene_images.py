@@ -49,13 +49,17 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
             (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
             (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
             generator = MockImageProvider()
-            use_case = GenerateSceneImagesUseCase(ImagePromptBuilder("realistic"), generator)
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), generator
+            )
 
             image_files = use_case.execute(scenes_dir)
 
             self.assertEqual([file.name for file in image_files], ["scene01.png", "scene02.png"])
             self.assertEqual(len(generator.prompts), 2)
             self.assertIn("1番目の場面", generator.prompts[0])
+            self.assertIn("clean 2D digital illustration", generator.prompts[0])
+            self.assertNotIn("realistic photography", generator.prompts[0])
             self.assertIn("no text", generator.prompts[0])
 
     def test_openai_image_generator_requests_high_quality_landscape_png(self) -> None:

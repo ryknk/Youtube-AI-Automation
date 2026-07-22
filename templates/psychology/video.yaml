@@ -13,7 +13,7 @@ subtitles:
   position: bottom
   alignment: center
   bottom_margin: 20
-  box_enabled: false
+  box_enabled: true
   background_color: "#000000"
   background_opacity: 0.6
 bgm:

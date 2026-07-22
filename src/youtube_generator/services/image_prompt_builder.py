@@ -2,7 +2,7 @@
 
 
 class ImagePromptBuilder:
-    """すべてのシーンに共通するリアル調の画像表現を適用する。"""
+    """テンプレートで指定された画像表現をすべてのシーンに適用する。"""
 
     def __init__(self, style: str) -> None:
         self._style = style
@@ -13,13 +13,13 @@ class ImagePromptBuilder:
         if not cleaned_text:
             raise ValueError("画像化するシーン本文が空です。")
         return (
-            "Use case: photorealistic-natural.\n"
+            "Use case: template-directed visual.\n"
             "Asset type: 16:9 YouTube video scene background.\n"
             f"Primary request: Visually depict this Japanese narration scene: {cleaned_text}\n"
-            f"Style/medium: {self._style}, high-detail realistic photography.\n"
-            "Composition/framing: cinematic widescreen composition, visually clear main subject, "
-            "natural depth and balanced framing.\n"
-            "Lighting/mood: realistic cinematic lighting appropriate to the scene.\n"
-            "Constraints: 16:9 landscape image, maintain a consistent photorealistic style across "
+            f"Style/medium: {self._style}. Follow this template-specific medium and style exactly.\n"
+            "Composition/framing: polished widescreen composition, visually clear main subject, "
+            "clear depth and balanced framing.\n"
+            "Lighting/mood: colors and lighting appropriate to the scene and specified medium.\n"
+            "Constraints: 16:9 landscape image, maintain the specified style consistently across "
             "all scenes, no text, no subtitles, no logos, no watermark."
         )
