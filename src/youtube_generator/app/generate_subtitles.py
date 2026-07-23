@@ -29,6 +29,7 @@ class GenerateSubtitlesUseCase:
             raise FileNotFoundError(f"sceneNN.mp3 が見つかりません: {scenes_dir}")
 
         cues: list[SubtitleCue] = []
+        total_audio_duration = 0.0
         for scene_id, audio_file in enumerate(audio_files, 1):
             scene_file = audio_file.with_suffix(".txt")
             try:
@@ -36,6 +37,7 @@ class GenerateSubtitlesUseCase:
             except OSError as error:
                 raise FileNotFoundError(f"対応するシーンテキストが見つかりません: {scene_file}") from error
             duration = self._duration_provider.get_duration_seconds(audio_file)
+            total_audio_duration += duration
             if self._splitter is None:
                 cues.append(SubtitleCue(text=text, duration_seconds=duration))
             else:
@@ -46,9 +48,24 @@ class GenerateSubtitlesUseCase:
                         segments = aligned
                 cues.extend(SubtitleCue(segment.text, segment.end_time - segment.start_time) for segment in segments)
 
+        cues = self._pad_tail(cues, total_audio_duration)
+
         subtitle_file = scenes_dir / "subtitles.srt"
         subtitle_file.write_text(self._srt_builder.build(tuple(cues)), encoding="utf-8")
         return subtitle_file
+
+    @staticmethod
+    def _pad_tail(cues: list[SubtitleCue], total_audio_duration: float) -> list[SubtitleCue]:
+        """alignmentモードで末尾シーンの無音区間がstable-tsに検出されず字幕終端が
+        音声合計長より短くなる場合、差分を最終キューへ加算して終端を音声長に合わせる。"""
+        if not cues:
+            return cues
+        shortfall = total_audio_duration - sum(cue.duration_seconds for cue in cues)
+        if shortfall <= 0:
+            return cues
+        last = cues[-1]
+        cues[-1] = SubtitleCue(last.text, last.duration_seconds + shortfall)
+        return cues
 
     @staticmethod
     def _find_audio_files(scenes_dir: Path) -> tuple[Path, ...]:

@@ -64,7 +64,8 @@ def test_end_time_exceeding_duration_falls_back(tmp_path):
 
 
 def test_aligns_segments_produced_by_subtitle_splitter(tmp_path):
-    """SubtitleSplitterが生成したセグメントへ、stable-tsの単語タイムスタンプを反映できる。"""
+    """SubtitleSplitterが生成したセグメントへ、stable-tsの単語タイムスタンプを反映できる。
+    先頭単語より前・末尾単語より後の無音は、シーン全体([0, duration])まで広げて吸収する。"""
     splitter = SubtitleSplitter(SubtitleSettings(segmentation_mode="scene", max_lines=1, max_chars_per_line=10))
     segments = splitter.split("おはよう世界", duration=2.0, scene_id=1)
     assert len(segments) == 1
@@ -78,5 +79,25 @@ def test_aligns_segments_produced_by_subtitle_splitter(tmp_path):
     aligned = JsonSubtitleAlignmentProvider().align(file, segments, duration=2.0)
 
     assert aligned is not None
-    assert aligned[0].start_time == 0.1
-    assert aligned[0].end_time == 1.9
+    assert aligned[0].start_time == 0.0
+    assert aligned[0].end_time == 2.0
+
+
+def test_leading_and_trailing_silence_is_absorbed_without_shifting_middle_segments(tmp_path):
+    """先頭・末尾の無音を吸収しても、中間セグメントの境界(累積時間)はズレない。"""
+    file = tmp_path / "scene01.alignment.json"
+    _write_alignment(file, [
+        {"text": "A", "start": 0.3, "end": 1.0},
+        {"text": "B", "start": 1.0, "end": 1.5},
+        {"text": "C", "start": 1.5, "end": 3.0},
+        {"text": "D", "start": 3.0, "end": 3.6},
+    ])
+    segments = (SubtitleSegment("AB", 0, 0, 1, 1), SubtitleSegment("CD", 0, 0, 1, 2))
+
+    aligned = JsonSubtitleAlignmentProvider().align(file, segments, duration=4.0)
+
+    assert aligned is not None
+    assert (aligned[0].start_time, aligned[0].end_time) == (0.0, 1.5)
+    assert (aligned[1].start_time, aligned[1].end_time) == (1.5, 4.0)
+    total = sum(item.end_time - item.start_time for item in aligned)
+    assert total == 4.0

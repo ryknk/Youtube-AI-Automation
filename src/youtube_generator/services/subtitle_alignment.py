@@ -44,6 +44,15 @@ class JsonSubtitleAlignmentProvider:
             aligned.append(SubtitleSegment(segment.text, start_time, end_time, segment.scene_id, segment.index))
             offset += length
 
+        # 最初の単語より前・最後の単語より後の無音区間はstable-tsの検出範囲外のため、
+        # 先頭・末尾セグメントをシーン全体([0, duration])まで広げて音声との累積ズレを防ぐ。
+        first = aligned[0]
+        if first.start_time > 0:
+            aligned[0] = SubtitleSegment(first.text, 0.0, first.end_time, first.scene_id, first.index)
+        last = aligned[-1]
+        if last.end_time < duration:
+            aligned[-1] = SubtitleSegment(last.text, last.start_time, duration, last.scene_id, last.index)
+
         if any(item.start_time < 0 or item.end_time <= item.start_time for item in aligned):
             return None
         if aligned[-1].end_time > duration + 0.05:
