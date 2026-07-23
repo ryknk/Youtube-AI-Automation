@@ -107,6 +107,18 @@
 
 ---
 
+## ジョブパイプラインの台本出力先を、スキャンではなく決定的な計算で特定
+
+**課題**: `jobs/pipeline.py`の`ExistingPipelineRunner`は、台本生成後の出力先を`output/`以下の全走査＋mtime最大値の推測（`_new_script_dir`）で特定していた。他ジョブ・他プロセスが同時に`script.txt`を書き込むと誤ったディレクトリを選ぶ可能性があった。
+
+**決定**: 台本生成時に既に`--run-id job.job_id`を渡していることに着目し、`GenerateScriptUseCase.output_directory(output_dir, theme, template, run_id)`（`cli/main.py`が内部で使うのと同じ関数）を直接呼んで出力先を計算する方式に置き換えた。スキャン・スナップショット比較を廃止。
+
+**理由**: 出力先は`theme`・`template`・`run_id`から一意に決まる決定的な値であり、既に呼び出し元が知っている情報だけで計算できるため、ファイルスキャンによる競合リスクを完全に排除できる。既存の`GenerateScriptUseCase.output_directory`を再利用するため、パス計算ロジックの二重実装にもならない。
+
+**却下した代替案**: `cli/main.py`の`--theme`処理に出力先を明示指定できるオプションを追加する案も検討したが、CLIパーサー本体の変更が必要になり変更範囲が広がるため見送った。
+
+---
+
 ## 関連ドキュメント
 
 - [CLAUDE.md](CLAUDE.md) — 開発方針・アーキテクチャ・コーディング規約

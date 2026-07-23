@@ -6,8 +6,10 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from youtube_generator.config import PROJECT_ROOT
+from youtube_generator.app.generate_script import GenerateScriptUseCase
+from youtube_generator.config import PROJECT_ROOT, load_settings
 from youtube_generator.jobs.manager import Job, JobStage
+from youtube_generator.services.template_service import TemplateManager
 
 
 class ExistingPipelineRunner:
@@ -18,15 +20,11 @@ class ExistingPipelineRunner:
         work_dir.mkdir(exist_ok=True)
 
         update_stage(JobStage.SCRIPT_GENERATION)
-        before = {
-            path.resolve() for path in (PROJECT_ROOT / "output").rglob("script.txt")
-        }
         self._run(
             "--theme", job.theme, "--template", job.template,
             "--run-id", job.job_id,
         )
-        source_dir = self._new_script_dir(before)
-        script_file = source_dir / "script.txt"
+        script_file = self._script_output_dir(job) / "script.txt"
         self._copy(script_file, work_dir / "script.txt")
         self._copy(script_file, job.output_dir / "script" / "script.txt")
 
@@ -71,14 +69,16 @@ class ExistingPipelineRunner:
                 self._copy(source, destination_dir / source.name)
 
     @staticmethod
-    def _new_script_dir(before: set[Path]) -> Path:
-        candidates = [
-            path.parent for path in (PROJECT_ROOT / "output").rglob("script.txt")
-            if path.resolve() not in before
-        ]
-        if not candidates:
-            raise RuntimeError("既存パイプラインのscript.txt出力を確認できませんでした。")
-        return max(candidates, key=lambda path: path.stat().st_mtime)
+    def _script_output_dir(job: Job) -> Path:
+        """cli/main.pyの--themeが台本を書き込む出力先を、スキャンせず直接計算する。
+
+        run_id（job.job_id）を渡して台本生成しているため、出力先は
+        GenerateScriptUseCase.output_directoryと同じ計算式で一意に定まる。
+        他ジョブの並行書き込みに影響されるファイルスキャンを避けるための実装。
+        """
+        settings = load_settings()
+        template = TemplateManager(settings.templates_dir).get(job.template)
+        return GenerateScriptUseCase.output_directory(settings.output_dir, job.theme, template, job.job_id)
 
     @staticmethod
     def _metadata_arguments(job: Job, work_dir: Path) -> tuple[str, ...]:
