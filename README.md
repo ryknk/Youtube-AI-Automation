@@ -266,7 +266,7 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 .\run.cmd ending delete --template zatsugaku
 ```
 
-`config/config.yaml` の `ending` セクションで、機能の有効化、3〜8秒の長さ、参照テキスト上限、画像選択（`first` / `random` / `sequence`）、本編への自動結合を設定できます。`auto_append: true`では動画レンダリング後に`main.mp4`、`ending.mp4`、`final.mp4`を作成します。YouTube投稿時は`final.mp4`を最優先で使用します。
+`config/config.yaml` の `ending` セクションで、機能の有効化、5〜15秒の長さ、参照テキスト上限、画像選択（`first` / `random` / `sequence`）、本編への自動結合を設定できます。`auto_append: true`では動画レンダリング後に`main.mp4`、`ending.mp4`、`final.mp4`を作成します。YouTube投稿時は`final.mp4`を最優先で使用します。
 
 ## テンプレート共通BGM
 

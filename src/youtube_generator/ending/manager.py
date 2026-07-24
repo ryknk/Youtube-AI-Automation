@@ -33,8 +33,8 @@ class EndingRenderer(Protocol):
 class EndingSettings:
     enabled: bool = True
     auto_append: bool = True
-    min_duration: float = 3.0
-    max_duration: float = 8.0
+    min_duration: float = 5.0
+    max_duration: float = 15.0
     max_reference_text_chars: int = 10_000
     image_mode: str = "sequence"
     subtitles_enabled: bool = True
@@ -45,8 +45,8 @@ class EndingSettings:
         settings = cls(
             enabled=bool(data.get("enabled", True)),
             auto_append=bool(data.get("auto_append", True)),
-            min_duration=float(data.get("min_duration", 3)),
-            max_duration=float(data.get("max_duration", 8)),
+            min_duration=float(data.get("min_duration", 5)),
+            max_duration=float(data.get("max_duration", 15)),
             max_reference_text_chars=int(data.get("max_reference_text_chars", 10_000)),
             image_mode=str(data.get("image_mode", "sequence")).lower(),
             subtitles_enabled=bool((data.get("subtitles", {}) or {}).get("enabled", True)) if isinstance(data.get("subtitles", {}), dict) else True,

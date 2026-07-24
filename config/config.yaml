@@ -172,8 +172,8 @@ ending:
   subtitles:
     enabled: false
   auto_append: true
-  min_duration: 3
-  max_duration: 8
+  min_duration: 5
+  max_duration: 15
   max_reference_text_chars: 10000
   image_mode: sequence
 
