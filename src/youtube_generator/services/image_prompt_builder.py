@@ -20,6 +20,10 @@ class ImagePromptBuilder:
             "Composition/framing: polished widescreen composition, visually clear main subject, "
             "clear depth and balanced framing.\n"
             "Lighting/mood: colors and lighting appropriate to the scene and specified medium.\n"
+            "Character depiction: when the scene depicts people, render each person with clearly "
+            "distinguishable gender-appropriate features (male: masculine build, facial structure, "
+            "and attire; female: feminine build, facial structure, and attire) matching the gender "
+            "implied by the narration, so male and female characters are visually unambiguous.\n"
             "Constraints: 16:9 landscape image, maintain the specified style consistently across "
             "all scenes, no text, no subtitles, no logos, no watermark."
         )
