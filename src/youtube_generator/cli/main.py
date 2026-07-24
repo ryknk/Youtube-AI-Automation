@@ -254,6 +254,14 @@ def run() -> None:
             )
             if not isinstance(quality_values, dict):
                 raise ValueError("config.yaml の quality 設定が不正です。")
+            ending_values = video_settings.values.get("ending", {})
+            ending_auto_append_enabled = (
+                isinstance(ending_values, dict)
+                and bool(ending_values.get("enabled", True))
+                and bool(ending_values.get("auto_append", True))
+            )
+            # エンディングを結合しない場合、最後のシーンを延長する意味がないため間隔は0秒とする。
+            main_gap_seconds = float(ending_values.get("gap_seconds", 1.0)) if ending_auto_append_enabled else 0.0
             duration_provider = FfprobeAudioDurationProvider(settings.ffprobe_executable)
             quality_checker = QualityChecker(
                 load_quality_rules(quality_values), duration_provider
@@ -297,6 +305,7 @@ def run() -> None:
                     bgm_enabled=bgm_setting.enabled, bgm_file=bgm_setting.file or settings.config_dir.parent / "assets" / "bgm.mp3",
                     bgm_volume=bgm_setting.volume, bgm_loop=bgm_setting.loop,
                     bgm_fade_in=bgm_setting.fade_in, bgm_fade_out=bgm_setting.fade_out,
+                    gap_seconds=main_gap_seconds,
                     subtitle_font=str(subtitle_values["font"]), subtitle_size=int(subtitle_values["size"]),
                     subtitle_color=str(subtitle_values["color"]),
                     subtitle_position=str(subtitle_values.get("position", "bottom")),
@@ -322,6 +331,7 @@ def run() -> None:
                 json.dumps({
                     "width": video_values["width"], "height": video_values["height"],
                     "fps": video_values["fps"], "output_format": video_values["output_format"],
+                    "gap_seconds": main_gap_seconds,
                 }, sort_keys=True),
                 json.dumps(subtitle_values, ensure_ascii=False, sort_keys=True),
                 bgm_setting.cache_fingerprint,
@@ -335,8 +345,7 @@ def run() -> None:
                 video_file = GenerateVideoUseCase(renderer).execute(args.generate_video, str(video_values["output_format"]))
                 if cache_manager is not None:
                     cache_manager.save_files(video_cache_key, "video", (video_file,))
-            ending_values = video_settings.values.get("ending", {})
-            if isinstance(ending_values, dict) and bool(ending_values.get("enabled", True)) and bool(ending_values.get("auto_append", True)):
+            if ending_auto_append_enabled:
                 main_file = args.generate_video / "main.mp4"
                 ending_file = args.generate_video / "ending.mp4"
                 final_file = args.generate_video / "final.mp4"
