@@ -284,11 +284,12 @@ bgm:
   main:
     volume: 0.08
   ending:
+    file: assets/ending.mp3
     volume: 0.12
     fade_in: 0.5
 ```
 
-個別設定がない用途は共通値を継承します。BGMの優先順位は、テンプレート固有、`default`テンプレート、`config/config.yaml`のグローバル設定、BGMなしです。テンプレート側で`enabled: false`を指定した場合はフォールバックしません。音源ファイルまたは設定が変わると、エンディングのキャッシュキーも変わります。
+`main` / `ending` / `final`には、共通設定の`enabled`・`file`・`volume`・`loop`・`fade_in`・`fade_out`・`missing_file_behavior`のうち上書きしたい項目だけを記述できます。`file`も対象ごとに個別のBGM音源へ差し替え可能です（上記例ではエンディングだけ`assets/ending.mp3`を使用）。個別設定がない項目・用途は共通値を継承します。BGMの優先順位は、テンプレート固有、`default`テンプレート、`config/config.yaml`のグローバル設定、BGMなしです。テンプレート側で`enabled: false`を指定した場合はフォールバックしません。音源ファイルまたは設定が変わると、エンディングのキャッシュキーも変わります。
 
 ```powershell
 .\run.cmd bgm show --template history

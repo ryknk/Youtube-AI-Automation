@@ -17,7 +17,7 @@ subtitles:
   background_color: "#000000"
   background_opacity: 0.6
 bgm:
-  enabled: false
+  enabled: true
   render_mode: per_section
   file: assets/bgm.mp3
   volume: 0.08
@@ -25,6 +25,8 @@ bgm:
   fade_in: 1.0
   fade_out: 2.0
   missing_file_behavior: fallback
+  ending:
+    file: assets/ending.mp3
 audio:
   voicevox:
     speaker_id: 2
