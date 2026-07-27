@@ -24,6 +24,11 @@ class ImagePromptBuilder:
             "distinguishable gender-appropriate features (male: masculine build, facial structure, "
             "and attire; female: feminine build, facial structure, and attire) matching the gender "
             "implied by the narration, so male and female characters are visually unambiguous.\n"
+            "Dialogue/thoughts: if the narration includes spoken lines or inner thoughts, express "
+            "them purely through facial expression, gaze, posture, and body language. Do not render "
+            "the words themselves anywhere in the image.\n"
             "Constraints: 16:9 landscape image, maintain the specified style consistently across "
-            "all scenes, no text, no subtitles, no logos, no watermark."
+            "all scenes, no text, no subtitles, no logos, no watermark, no speech bubbles, no "
+            "chat/message bubbles, no on-screen UI text, no readable text on signs, banners, "
+            "posters, screens, papers, or products."
         )
