@@ -79,7 +79,11 @@ class EndingAsset:
 
 
 class EndingManager:
-    """素材・設定ハッシュでテンプレート共通エンディングを管理する。"""
+    """素材・設定ハッシュでテンプレート共通エンディングを管理する。
+
+    参照テキスト（ending*.txt）が存在する場合はLLMで書き換えずそのまま読み上げ、
+    存在しない場合のみtext_generatorでナレーションを生成する。
+    """
 
     _TEXT_SUFFIXES = {".txt"}
     _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -162,9 +166,13 @@ class EndingManager:
 
         self._logger.info("エンディング生成を開始します: template=%s", template.template_id)
         asset_dir.mkdir(parents=True, exist_ok=True)
-        narration = self._text_generator.generate_ending_narration(
-            template, materials.reference_text, self._settings.min_duration, self._settings.max_duration
-        ).strip()
+        if materials.reference_text:
+            # 参照テキストが存在する場合は、LLMで書き換えずそのまま読み上げる。
+            narration = materials.reference_text.strip()
+        else:
+            narration = self._text_generator.generate_ending_narration(
+                template, materials.reference_text, self._settings.min_duration, self._settings.max_duration
+            ).strip()
         report = self._quality_checker.check_ending(narration, self._settings.min_duration, self._settings.max_duration)
         self._raise_if_invalid(report)
         script_file = asset_dir / "ending_script.txt"

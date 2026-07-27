@@ -57,7 +57,9 @@ def _write_template(root: Path, template_id: str = "science", with_image: bool =
     (directory / "image_prompt.txt").write_text("realistic science", encoding="utf-8")
     (directory / "title_prompt.txt").write_text("短いタイトル", encoding="utf-8")
     (directory / "thumbnail_prompt.txt").write_text("明るい表紙", encoding="utf-8")
-    (directory / "ending_message.txt").write_text("視聴者にやさしく呼びかけます。", encoding="utf-8")
+    (directory / "ending_message.txt").write_text(
+        "今回の内容が皆さんのお役に立てたなら嬉しいです。ぜひ次の動画でもお会いしましょう。", encoding="utf-8"
+    )
     (directory / "video.yaml").write_text("display_name: 科学\nscene_structure: [導入]\n", encoding="utf-8")
     if with_image:
         (directory / "nested").mkdir()
@@ -86,7 +88,7 @@ def test_collects_all_text_and_images_recursively(tmp_path):
 
     assert len(materials.text_files) == 1
     assert len(materials.image_files) == 1
-    assert "視聴者にやさしく" in materials.reference_text
+    assert "今回の内容が皆さんの" in materials.reference_text
     assert "親しみやすい" not in materials.reference_text
 
 
@@ -98,7 +100,11 @@ def test_generates_and_reuses_cached_ending(tmp_path):
 
     assert first is not None and first.video_file.is_file()
     assert second is not None and second.reused is True
-    assert generator.calls == 1
+    # 参照テキストが存在するため、LLMでの書き換えは行われない。
+    assert generator.calls == 0
+    assert first.script_file.read_text(encoding="utf-8").strip() == (
+        "今回の内容が皆さんのお役に立てたなら嬉しいです。ぜひ次の動画でもお会いしましょう。"
+    )
     assert len(renderer.requests) == 1
 
 
@@ -108,18 +114,23 @@ def test_no_images_is_not_an_error_and_force_regenerates(tmp_path):
     manager.ensure("science")
     manager.ensure("science", force=True)
 
-    assert generator.calls == 2
+    assert generator.calls == 0
     assert renderer.requests[0].image_files == ()
 
 
 def test_material_change_invalidates_existing_ending(tmp_path):
     manager, generator, _, templates_root = _manager(tmp_path)
-    manager.ensure("science")
-    (templates_root / "science" / "ending_message.txt").write_text("新しい方針です。", encoding="utf-8")
+    first = manager.ensure("science")
+    (templates_root / "science" / "ending_message.txt").write_text(
+        "新しい台本に差し替えました。今回もご視聴いただきありがとうございました。", encoding="utf-8"
+    )
 
-    manager.ensure("science")
+    second = manager.ensure("science")
 
-    assert generator.calls == 2
+    assert generator.calls == 0
+    assert first is not None and second is not None
+    assert second.reused is False
+    assert first.cache_key != second.cache_key
 
 
 def test_auto_append_can_be_disabled(tmp_path):
@@ -164,7 +175,8 @@ def test_uses_template_specific_tts_provider_when_configured(tmp_path):
     assert asset is not None
     assert asset.audio_file.read_bytes() == b"fake-mp3:science-voice"
     assert fallback_tts.calls == []
-    assert template_tts.calls == ["今回の内容が役立ったなら、また次の動画でお会いしましょう。"]
+    # 参照テキストが存在するため、LLM生成ではなく参照テキストそのものが読み上げられる。
+    assert template_tts.calls == ["今回の内容が皆さんのお役に立てたなら嬉しいです。ぜひ次の動画でもお会いしましょう。"]
 
 
 def test_asset_fingerprint_change_regenerates_ending(tmp_path):
@@ -182,11 +194,14 @@ def test_asset_fingerprint_change_regenerates_ending(tmp_path):
         asset_fingerprint_for_template=lambda template_id: fingerprint_value[0],
     )
 
-    manager.ensure("science")
+    first = manager.ensure("science")
     fingerprint_value[0] = "voice-b"
-    manager.ensure("science")
+    second = manager.ensure("science")
 
-    assert generator.calls == 2
+    assert generator.calls == 0
+    assert first is not None and second is not None
+    assert second.reused is False
+    assert first.cache_key != second.cache_key
 
 
 def test_delete_removes_generated_asset_and_cache(tmp_path):

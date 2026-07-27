@@ -40,7 +40,10 @@ def test_main_and_template_ending_are_combined(tmp_path):
     template.mkdir(parents=True)
     for name in ("prompt.txt", "image_prompt.txt", "title_prompt.txt", "thumbnail_prompt.txt"):
         (template / name).write_text("共通素材", encoding="utf-8")
-    (template / "ending_message.txt").write_text("また次回もお楽しみください。", encoding="utf-8")
+    (template / "ending_message.txt").write_text(
+        "ここまでご視聴いただき誠にありがとうございました。また次回の動画でも皆さんにお会いできるのを楽しみにしています。",
+        encoding="utf-8",
+    )
     (template / "video.yaml").write_text("scene_structure: [締め]\n", encoding="utf-8")
     main = tmp_path / "job" / "video" / "main.mp4"
     main.parent.mkdir(parents=True)

@@ -256,7 +256,7 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 ## テンプレート共通エンディング
 
-各テンプレート配下を再帰的に検索し、ファイル名が大文字・小文字を問わず`ending`で始まる`.txt`、`.png`、`.jpg`、`.jpeg`、`.webp`だけを共通エンディングの素材として利用します。たとえば`ending_message.txt`、`ending_logo.png`、`assets/ending_background.jpg`を配置できます。テキストは口調・チャンネル方針の文脈、画像は背景やロゴ等として扱われます。生成結果は`generated_assets/endings/<template>/`に保存され、素材・動画スタイル・エンディング設定・字幕/BGM設定・音声（TTS）設定から計算したSHA-256ハッシュが一致する限り再利用されます。エンディングのナレーションも本編と同様にテンプレート別VOICEVOX設定（`video.yaml`の`audio.voicevox`上書き）が適用され、対象テンプレートの音声設定を変更するとそのテンプレートのエンディングキャッシュだけが無効になります。
+各テンプレート配下を再帰的に検索し、ファイル名が大文字・小文字を問わず`ending`で始まる`.txt`、`.png`、`.jpg`、`.jpeg`、`.webp`だけを共通エンディングの素材として利用します。たとえば`ending_message.txt`、`ending_logo.png`、`assets/ending_background.jpg`を配置できます。画像は背景やロゴ等として扱われます。テキスト（`ending*.txt`）が存在する場合は、その内容をそのまま結合してエンディングのナレーションとして読み上げます（LLMによる書き換えは行いません）。該当するテキストファイルが存在しないテンプレートでは、従来どおりテンプレートの`prompt.txt`などをもとにLLMがナレーションを生成します。生成結果は`generated_assets/endings/<template>/`に保存され、素材・動画スタイル・エンディング設定・字幕/BGM設定・音声（TTS）設定から計算したSHA-256ハッシュが一致する限り再利用されます。エンディングのナレーションも本編と同様にテンプレート別VOICEVOX設定（`video.yaml`の`audio.voicevox`上書き）が適用され、対象テンプレートの音声設定を変更するとそのテンプレートのエンディングキャッシュだけが無効になります。
 
 ```powershell
 .\run.cmd ending generate --template zatsugaku
