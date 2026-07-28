@@ -176,7 +176,7 @@ class FfmpegVideoRenderer(VideoRenderer):
             if fade_out > 0:
                 bgm_filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={fade_out:.3f}")
             filters.append(",".join(bgm_filters) + "[bgm]")
-            filters.append("[narration][bgm]amix=inputs=2:duration=first:weights='1 1'[audio]")
+            filters.append("[narration][bgm]amix=inputs=2:duration=first:weights='1 1':normalize=0[audio]")
         return ";".join(filters)
 
     def _scaled_zoompan_filter(self, image_input: int, output_label: str) -> str:

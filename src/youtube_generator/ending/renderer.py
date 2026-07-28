@@ -129,7 +129,7 @@ class FfmpegEndingRenderer:
             if fade_out > 0:
                 bgm_filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={fade_out:.3f}")
             parts.append(",".join(bgm_filters) + "[bgm]")
-            parts.append(f"[{audio_index}:a][bgm]amix=inputs=2:duration=shortest:weights='1 1'[audio]")
+            parts.append(f"[{audio_index}:a][bgm]amix=inputs=2:duration=shortest:weights='1 1':normalize=0[audio]")
         else:
             parts.append(f"[{audio_index}:a]anull[audio]")
         return ";".join(parts)

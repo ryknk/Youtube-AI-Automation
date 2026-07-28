@@ -50,6 +50,7 @@ def test_final_mix_builds_single_continuous_bgm_filter(tmp_path):
     assert "afade=t=in:st=0:d=1.000" in graph
     assert "afade=t=out:st=3.000:d=2.000" in graph
     assert "[0:a]volume=1.0[narration]" in graph
+    assert "amix=inputs=2:duration=first:weights='1 1':normalize=0" in graph
 
 
 def test_loop_false_does_not_loop_bgm(tmp_path):

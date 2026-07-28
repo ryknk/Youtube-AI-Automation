@@ -149,7 +149,7 @@ class FinalBGMRenderer:
         filter_graph = ";".join([
             f"{narration_input}volume=1.0[narration]",
             ",".join(filter.replace("[1:a]", f"[{bgm_input_index}:a]", 1) for filter in bgm_filters) + "[bgm]",
-            "[narration][bgm]amix=inputs=2:duration=first:weights='1 1'[audio]",
+            "[narration][bgm]amix=inputs=2:duration=first:weights='1 1':normalize=0[audio]",
         ])
         return [
             *command, "-filter_complex", filter_graph, "-map", "0:v:0", "-map", "[audio]",

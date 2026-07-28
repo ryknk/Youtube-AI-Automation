@@ -31,7 +31,7 @@ class GenerateVideoTests(unittest.TestCase):
             filter_graph,
         )
         self.assertIn("volume=0.15", filter_graph)
-        self.assertIn("amix=inputs=2:duration=first:weights='1 1'", filter_graph)
+        self.assertIn("amix=inputs=2:duration=first:weights='1 1':normalize=0", filter_graph)
         self.assertEqual(command[command.index("-c:v") + 1], "libx264")
         self.assertEqual(command[command.index("-pix_fmt") + 1], "yuv420p")
         self.assertEqual(command[command.index("-r") + 1], "30")
