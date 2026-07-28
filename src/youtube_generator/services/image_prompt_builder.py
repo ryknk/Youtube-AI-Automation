@@ -1,5 +1,11 @@
 """シーン本文から統一感のある画像生成プロンプトを組み立てる。"""
 
+import re
+
+# セリフを示す引用記号。FLUXは引用符付き文言を画面内テキストとして描画する
+# 指示と解釈するため（BFL公式プロンプトガイド準拠）、渡す前に除去する。
+_QUOTE_MARKERS = re.compile("[「」『』“”‘’\"']")
+
 
 class ImagePromptBuilder:
     """テンプレートで指定された画像表現をすべてのシーンに適用する。"""
@@ -12,10 +18,12 @@ class ImagePromptBuilder:
         cleaned_text = scene_text.strip()
         if not cleaned_text:
             raise ValueError("画像化するシーン本文が空です。")
+        narration_text = _QUOTE_MARKERS.sub("", cleaned_text)
         return (
             "Use case: template-directed visual.\n"
             "Asset type: 16:9 YouTube video scene background.\n"
-            f"Primary request: Visually depict this Japanese narration scene: {cleaned_text}\n"
+            f"Primary request: Visually depict the situation and mood of this Japanese narration "
+            f"scene: {narration_text}\n"
             f"Style/medium: {self._style}. Follow this template-specific medium and style exactly.\n"
             "Composition/framing: polished widescreen composition, visually clear main subject, "
             "clear depth and balanced framing.\n"
@@ -26,11 +34,8 @@ class ImagePromptBuilder:
             "implied by the narration, so male and female characters are visually unambiguous. This "
             "video is for a Japanese audience, so depict every person with Japanese ethnicity facial "
             "features, hairstyles, and attire appropriate to the scene.\n"
-            "Dialogue/thoughts: if the narration includes spoken lines or inner thoughts, express "
-            "them purely through facial expression, gaze, posture, and body language. Do not render "
-            "the words themselves anywhere in the image.\n"
+            "Dialogue/thoughts: convey any spoken lines or inner thoughts purely through facial "
+            "expression, gaze, posture, body language, and the surrounding situation.\n"
             "Constraints: 16:9 landscape image, maintain the specified style consistently across "
-            "all scenes, no text, no subtitles, no logos, no watermark, no speech bubbles, no "
-            "chat/message bubbles, no on-screen UI text, no readable text on signs, banners, "
-            "posters, screens, papers, or products."
+            "all scenes, no text."
         )
