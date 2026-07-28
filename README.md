@@ -268,6 +268,8 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 `config/config.yaml` の `ending` セクションで、機能の有効化、5〜15秒の長さ、参照テキスト上限、画像選択（`first` / `random` / `sequence`）、本編への自動結合を設定できます。`auto_append: true`では動画レンダリング後に`main.mp4`、`ending.mp4`、`final.mp4`を作成します。YouTube投稿時は`final.mp4`を最優先で使用します。`gap_seconds`（既定1.0秒）を指定すると、本編最後のシーンの画像とBGMをナレーションなしでその秒数だけ延長し、エンディングとの音声の区切りを明確にします（黒画面や完全な無音は挟みません）。延長中も直前の字幕表示とズーム効果（同一zoompanフィルター内での継続）は途切れません。`render_mode`が`per_section`・`final_mix`のどちらでも本編動画（`video.mp4`/`main.mp4`）の生成時に適用され、変更時は本編動画以降のみ再生成されます。
 
+`end_padding_seconds`（既定1.0秒）は、エンディング動画自体の末尾に追加する余白です。ナレーション終了直後に映像が途切れないよう、最後の画像をその秒数だけ延長し、音声も同じ長さだけ無音でパディングします。BGMが有効な場合はこの余白分も含めて再生・フェードアウトします。変更するとエンディングのキャッシュが無効になります。
+
 ## テンプレート共通BGM
 
 テンプレートの`video.yaml`にBGMを記述し、音源はテンプレート配下に配置します。対応形式は`.mp3`、`.wav`、`.m4a`、`.aac`、`.ogg`です。

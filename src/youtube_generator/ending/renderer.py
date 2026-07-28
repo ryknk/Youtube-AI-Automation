@@ -16,6 +16,7 @@ class EndingRenderRequest:
     image_files: tuple[Path, ...]
     output_file: Path
     duration_seconds: float
+    end_padding_seconds: float = 0.0
 
 
 class FfmpegEndingRenderer:
@@ -53,15 +54,20 @@ class FfmpegEndingRenderer:
         command = [self._executable, "-y"]
         image_count = max(1, len(request.image_files))
         segment_duration = request.duration_seconds / image_count
+        total_duration = request.duration_seconds + request.end_padding_seconds
         if request.image_files:
-            for image_file in request.image_files:
+            last_index = len(request.image_files) - 1
+            for index, image_file in enumerate(request.image_files):
+                # 最後の画像だけend_padding_seconds分延長し、ナレーション終了後の余白を作る。
+                extended = request.end_padding_seconds if index == last_index else 0.0
                 command.extend([
-                    "-loop", "1", "-framerate", str(self._settings.fps), "-t", f"{segment_duration:.3f}",
+                    "-loop", "1", "-framerate", str(self._settings.fps),
+                    "-t", f"{segment_duration + extended:.3f}",
                     "-i", str(image_file),
                 ])
         else:
             command.extend([
-                "-f", "lavfi", "-t", f"{request.duration_seconds:.3f}", "-i",
+                "-f", "lavfi", "-t", f"{total_duration:.3f}", "-i",
                 f"color=c=black:s={self._settings.width}x{self._settings.height}:r={self._settings.fps}",
             ])
         command.extend(["-i", str(request.audio_file)])
@@ -81,13 +87,16 @@ class FfmpegEndingRenderer:
         parts: list[str] = []
         audio_index = image_count
         segment_duration = request.duration_seconds / image_count
+        last_index = image_count - 1
         for index in range(image_count):
+            # 最後の画像だけend_padding_seconds分延長し、ナレーション終了後の余白を作る。
+            extended = request.end_padding_seconds if index == last_index else 0.0
             parts.append(
                 f"[{index}:v]scale={self._settings.width}:{self._settings.height}:"
                 "force_original_aspect_ratio=decrease,"
                 f"pad={self._settings.width}:{self._settings.height}:"
                 "(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,"
-                f"fps={self._settings.fps},trim=duration={segment_duration:.3f},"
+                f"fps={self._settings.fps},trim=duration={segment_duration + extended:.3f},"
                 f"setpts=PTS-STARTPTS[v{index}]"
             )
         if image_count == 1:
@@ -97,7 +106,7 @@ class FfmpegEndingRenderer:
             parts.append(f"{concat_inputs}concat=n={image_count}:v=1:a=0[visual]")
         if request.subtitle_file is None:
             parts.append("[visual]null[video]")
-            return self._audio_filters(parts, audio_index, request.duration_seconds)
+            return self._audio_filters(parts, audio_index, request.duration_seconds, request.end_padding_seconds)
         subtitle_path = self._escape_path(request.subtitle_file)
         style = build_ass_subtitle_style(
             font=self._settings.subtitle_font,
@@ -111,17 +120,20 @@ class FfmpegEndingRenderer:
             background_opacity=self._settings.subtitle_background_opacity,
         )
         parts.append(f"[visual]subtitles=filename='{subtitle_path}':charenc=UTF-8:force_style='{style}'[video]")
-        return self._audio_filters(parts, audio_index, request.duration_seconds)
+        return self._audio_filters(parts, audio_index, request.duration_seconds, request.end_padding_seconds)
 
     def _audio_filters(
-        self, parts: list[str], audio_index: int, duration_seconds: float,
+        self, parts: list[str], audio_index: int, duration_seconds: float, end_padding_seconds: float,
     ) -> str:
+        total_duration = duration_seconds + end_padding_seconds
+        # ナレーション終了後、動画の余白（end_padding_seconds）に合わせて音声側も無音でpadする。
+        parts.append(f"[{audio_index}:a]apad=pad_dur={end_padding_seconds:.3f}[narration]")
         if self._settings.bgm_enabled and self._settings.bgm_file.is_file():
-            fade_in = min(self._settings.bgm_fade_in, duration_seconds)
-            fade_out = min(self._settings.bgm_fade_out, duration_seconds)
-            fade_out_start = max(0.0, duration_seconds - fade_out)
+            fade_in = min(self._settings.bgm_fade_in, total_duration)
+            fade_out = min(self._settings.bgm_fade_out, total_duration)
+            fade_out_start = max(0.0, total_duration - fade_out)
             bgm_filters = [
-                f"[{audio_index + 1}:a]atrim=duration={duration_seconds:.3f}",
+                f"[{audio_index + 1}:a]atrim=duration={total_duration:.3f}",
                 f"volume={self._settings.bgm_volume}",
             ]
             if fade_in > 0:
@@ -129,9 +141,9 @@ class FfmpegEndingRenderer:
             if fade_out > 0:
                 bgm_filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={fade_out:.3f}")
             parts.append(",".join(bgm_filters) + "[bgm]")
-            parts.append(f"[{audio_index}:a][bgm]amix=inputs=2:duration=shortest:weights='1 1':normalize=0[audio]")
+            parts.append("[narration][bgm]amix=inputs=2:duration=shortest:weights='1 1':normalize=0[audio]")
         else:
-            parts.append(f"[{audio_index}:a]anull[audio]")
+            parts.append("[narration]anull[audio]")
         return ";".join(parts)
 
     def _run(self, command: list[str], action: str) -> None:

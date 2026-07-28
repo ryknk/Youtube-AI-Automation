@@ -38,6 +38,7 @@ class EndingSettings:
     max_reference_text_chars: int = 10_000
     image_mode: str = "sequence"
     subtitles_enabled: bool = True
+    end_padding_seconds: float = 1.0
 
     @classmethod
     def from_config(cls, values: object) -> "EndingSettings":
@@ -50,11 +51,14 @@ class EndingSettings:
             max_reference_text_chars=int(data.get("max_reference_text_chars", 10_000)),
             image_mode=str(data.get("image_mode", "sequence")).lower(),
             subtitles_enabled=bool((data.get("subtitles", {}) or {}).get("enabled", True)) if isinstance(data.get("subtitles", {}), dict) else True,
+            end_padding_seconds=float(data.get("end_padding_seconds", 1.0)),
         )
         if settings.min_duration <= 0 or settings.max_duration < settings.min_duration:
             raise ValueError("ending の秒数設定が不正です。")
         if settings.max_reference_text_chars <= 0 or settings.image_mode not in {"first", "random", "sequence"}:
             raise ValueError("ending の参照テキストまたは image_mode 設定が不正です。")
+        if settings.end_padding_seconds < 0:
+            raise ValueError("ending の end_padding_seconds 設定が不正です。")
         return settings
 
 
@@ -190,7 +194,10 @@ class EndingManager:
             subtitle_file.unlink(missing_ok=True)
         selected_images = self._select_images(materials.image_files, cache_key)
         self._renderer_for(template.template_id).render(
-            EndingRenderRequest(audio_file, subtitle_file if subtitles_enabled else None, selected_images, video_file, duration)
+            EndingRenderRequest(
+                audio_file, subtitle_file if subtitles_enabled else None, selected_images, video_file, duration,
+                self._settings.end_padding_seconds,
+            )
         )
         report = self._quality_checker.check_ending(
             narration, self._settings.min_duration, self._settings.max_duration, audio_file, video_file
