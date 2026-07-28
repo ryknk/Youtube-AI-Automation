@@ -78,11 +78,12 @@ def run_queue(arguments: list[str]) -> None:
         queue_settings = load_video_settings(settings.config_dir / "config.yaml").values["queue"]
         if not isinstance(queue_settings, dict):
             raise ValueError("config.yaml の queue 設定が不正です。")
+        skip_thumbnail = bool(queue_settings.get("skip_thumbnail", False))
         def processor(job, update_stage):  # type: ignore[no-untyped-def]
             logger.info("job_id=%s: ジョブを開始します。", job.job_id)
             def logged_update(stage):  # type: ignore[no-untyped-def]
                 logger.info("job_id=%s: 工程=%s", job.job_id, stage.value)
                 update_stage(stage)
-            ExistingPipelineRunner()(job, logged_update)
+            ExistingPipelineRunner(skip_thumbnail=skip_thumbnail)(job, logged_update)
             logger.info("job_id=%s: ジョブを完了しました。", job.job_id)
         manager.run_pending(processor, stop_on_error=bool(queue_settings["stop_on_error"]))

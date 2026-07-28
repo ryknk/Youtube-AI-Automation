@@ -15,6 +15,9 @@ from youtube_generator.services.template_service import TemplateManager
 class ExistingPipelineRunner:
     """既存のCLIを再利用し、工程別成果物をジョブ出力へコピーする。"""
 
+    def __init__(self, skip_thumbnail: bool = False) -> None:
+        self._skip_thumbnail = skip_thumbnail
+
     def __call__(self, job: Job, update_stage: Callable[[JobStage], None]) -> None:
         work_dir = job.output_dir / ".work"
         work_dir.mkdir(exist_ok=True)
@@ -55,8 +58,9 @@ class ExistingPipelineRunner:
         self._copy_matching(work_dir, "*.txt", job.output_dir / "metadata", exclude={"script.txt"})
 
         update_stage(JobStage.THUMBNAIL_GENERATION)
-        self._run("--generate-thumbnail", str(work_dir), "--template", job.template)
-        self._copy(work_dir / "thumbnail.png", job.output_dir / "thumbnail" / "thumbnail.png")
+        if not self._skip_thumbnail:
+            self._run("--generate-thumbnail", str(work_dir), "--template", job.template)
+            self._copy(work_dir / "thumbnail.png", job.output_dir / "thumbnail" / "thumbnail.png")
 
     @staticmethod
     def _copy(source: Path, destination: Path) -> None:

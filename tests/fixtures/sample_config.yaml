@@ -10,5 +10,5 @@ metadata: {title_count: 2}
 quality: {min_characters: 10, max_characters: 100, characters_per_second: 6.0, forbidden_words: [], duplicate_sentence_threshold: 2}
 retry: {max_attempts: 1, initial_wait_seconds: 1.0, backoff_multiplier: 2.0, timeout_seconds: 10}
 cache: {enabled: false, expiration_days: 1}
-queue: {stop_on_error: false}
+queue: {stop_on_error: false, skip_thumbnail: false}
 youtube: {default_privacy: private, category_id: 22, upload_enabled: false}

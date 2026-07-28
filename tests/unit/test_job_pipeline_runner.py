@@ -71,10 +71,10 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
         else:
             raise AssertionError(f"未知のコマンドです: {command}")
 
-    def _run_pipeline(self, update_stage=lambda stage: None) -> None:
+    def _run_pipeline(self, update_stage=lambda stage: None, skip_thumbnail: bool = False) -> None:
         with patch("youtube_generator.jobs.pipeline.load_settings", return_value=self.settings), \
              patch.object(ExistingPipelineRunner, "_run", side_effect=self._fake_run):
-            ExistingPipelineRunner()(self.job, update_stage)
+            ExistingPipelineRunner(skip_thumbnail=skip_thumbnail)(self.job, update_stage)
 
     def test_copies_each_stage_output_into_job_directory(self) -> None:
         stages: list[JobStage] = []
@@ -110,6 +110,15 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
         self.assertEqual(
             (self.job.output_dir / "script" / "script.txt").read_text(encoding="utf-8"), "本物の台本",
         )
+
+    def test_skip_thumbnail_omits_generation_and_copy(self) -> None:
+        stages: list[JobStage] = []
+
+        self._run_pipeline(stages.append, skip_thumbnail=True)
+
+        self.assertNotIn("--generate-thumbnail", [call[0] for call in self.calls])
+        self.assertFalse((self.job.output_dir / "thumbnail" / "thumbnail.png").exists())
+        self.assertIn(JobStage.THUMBNAIL_GENERATION, stages)
 
     def test_run_invoked_with_expected_arguments_per_stage(self) -> None:
         self._run_pipeline()
