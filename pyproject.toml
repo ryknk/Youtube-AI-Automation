@@ -15,6 +15,7 @@ dependencies = [
     "PyYAML>=6.0,<7.0",
     "google-api-python-client>=2.0,<3.0",
     "google-auth-oauthlib>=1.2,<2.0",
+    "Pillow>=10.0,<12.0",
 ]
 
 [project.optional-dependencies]
@@ -22,6 +23,16 @@ dev = [
     "pytest>=8.0,<9.0",
     "pytest-cov>=5.0,<7.0",
     "pytest-mock>=3.14,<4.0",
+]
+# FLUX.1 Schnell Self-host（ローカルGPU画像生成）用の任意依存関係。
+# 通常利用者（BFL/OpenAI画像プロバイダーのみ使用）にはインストール不要。
+# 導入手順・GPU/CUDA確認方法はREADME.mdを参照。
+flux-local = [
+    "torch>=2.2",
+    "diffusers>=0.30",
+    "transformers>=4.40",
+    "accelerate>=0.30",
+    "safetensors>=0.4",
 ]
 
 [project.scripts]

@@ -11,6 +11,11 @@ from youtube_generator.plugins.base.text_generator import TextGenerator
 from youtube_generator.plugins.base.tts_provider import TTSProvider
 from youtube_generator.plugins.image.openai_image import OpenAIImageProvider
 from youtube_generator.plugins.image.bfl_image import BFLImageProvider
+from youtube_generator.plugins.image.flux_schnell_local_image import (
+    FluxSchnellLocalImageProvider,
+    FluxSchnellLocalSettings,
+)
+from youtube_generator.plugins.image.image_provider_fallback import FallbackImageProvider
 from youtube_generator.plugins.text.openai_text import OpenAITextProvider
 from youtube_generator.plugins.tts.openai_tts import OpenAITTSProvider
 from youtube_generator.plugins.tts.voicevox_tts import VOICEVOXTTSProvider
@@ -59,12 +64,28 @@ class PluginManager:
             }, retry_policy)
         raise ValueError(f"未対応のttsプロバイダーです: {self._provider_name('tts')}")
 
+    def image_provider_name(self, purpose: str) -> str:
+        """シーン('scene')・サムネイル('thumbnail')ごとに解決した画像プロバイダー名を返す。
+
+        キャッシュfingerprintの組み立て等、Provider生成を伴わない箇所から
+        参照するための公開ヘルパー。
+        """
+        return self._provider_name("image", purpose)
+
     def create_image_provider(
         self, image_settings: dict[str, Any], retry_policy: RetryPolicy,
         size_setting: str = "scene_size",
     ) -> ImageProvider:
+        purpose = "thumbnail" if size_setting == "thumbnail_size" else "scene"
+        provider_name = self._provider_name("image", purpose)
+        return self._build_named_image_provider(provider_name, image_settings, retry_policy, size_setting)
+
+    def _build_named_image_provider(
+        self, provider_name: str, image_settings: dict[str, Any], retry_policy: RetryPolicy,
+        size_setting: str,
+    ) -> ImageProvider:
         model_setting = "thumbnail_model" if size_setting == "thumbnail_size" else "scene_model"
-        if self._provider_name("image") == "bfl":
+        if provider_name == "bfl":
             if (
                 self._settings.bfl_api_key is None
                 or not self._settings.bfl_api_key.get_secret_value().strip()
@@ -74,12 +95,35 @@ class PluginManager:
                 self._settings.bfl_api_key.get_secret_value(),
                 str(image_settings[model_setting]), str(image_settings[size_setting]), retry_policy,
             )
-        if self._provider_name("image") == "openai":
+        if provider_name == "openai":
             return OpenAIImageProvider(
                 self._api_key(), str(image_settings["openai_model"]), str(image_settings[size_setting]),
                 str(image_settings["quality"]), retry_policy,
             )
-        raise ValueError(f"未対応のimageプロバイダーです: {self._provider_name('image')}")
+        if provider_name == "flux_schnell_local":
+            return self._create_flux_schnell_local_provider(image_settings, retry_policy, size_setting)
+        raise ValueError(f"未対応のimageプロバイダーです: {provider_name}")
+
+    def _create_flux_schnell_local_provider(
+        self, image_settings: dict[str, Any], retry_policy: RetryPolicy, size_setting: str,
+    ) -> ImageProvider:
+        flux_settings_raw = image_settings.get("flux_schnell_local", {})
+        if not isinstance(flux_settings_raw, dict):
+            raise ValueError("config.yaml の image.flux_schnell_local 設定が不正です。")
+        flux_settings = FluxSchnellLocalSettings.from_mapping(flux_settings_raw)
+        primary: ImageProvider = FluxSchnellLocalImageProvider(
+            flux_settings, str(image_settings[size_setting]),
+        )
+        if flux_settings.fallback_provider is None:
+            return primary
+        if flux_settings.fallback_provider == "flux_schnell_local":
+            raise ValueError(
+                "image.flux_schnell_local.fallback_provider に flux_schnell_local は指定できません。"
+            )
+        fallback = self._build_named_image_provider(
+            flux_settings.fallback_provider, image_settings, retry_policy, size_setting,
+        )
+        return FallbackImageProvider(primary, fallback, flux_settings.fallback_provider)
 
     def create_metadata_generator(
         self, retry_policy: RetryPolicy, title_count: int
@@ -91,10 +135,15 @@ class PluginManager:
             )
         raise ValueError(f"未対応のtextプロバイダーです: {self._provider_name('text')}")
 
-    def _provider_name(self, category: str) -> str:
+    def _provider_name(self, category: str, purpose: str | None = None) -> str:
         value = self._provider_settings.get(category)
+        label = f"{category}.{purpose}" if purpose else category
+        if isinstance(value, dict):
+            if purpose is None:
+                raise ValueError(f"config.yaml の providers.{category} を指定してください。")
+            value = value.get(purpose)
         if not isinstance(value, str) or not value:
-            raise ValueError(f"config.yaml の providers.{category} を指定してください。")
+            raise ValueError(f"config.yaml の providers.{label} を指定してください。")
         return value.lower()
 
     def _api_key(self) -> str:

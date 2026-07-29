@@ -47,6 +47,16 @@ from youtube_generator.cli.ending import run_ending
 from youtube_generator.cli.ending import create_ending_manager
 from youtube_generator.cli.bgm import run_bgm
 from youtube_generator.cli.render import run_render
+from youtube_generator.cli.image import run_image
+
+
+def _parse_image_size(size: str) -> tuple[int, int] | None:
+    """"WxH"形式の画像サイズ設定を解析する。解析できない場合は品質チェックをスキップするためNoneを返す。"""
+    try:
+        width_text, height_text = size.lower().split("x", maxsplit=1)
+        return int(width_text), int(height_text)
+    except (ValueError, AttributeError):
+        return None
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -84,6 +94,9 @@ def run() -> None:
         return
     if len(sys.argv) > 1 and sys.argv[1] == "render":
         run_render(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "image":
+        run_image(sys.argv[2:])
         return
     args = create_parser().parse_args()
 
@@ -174,6 +187,9 @@ def run() -> None:
             thumbnail_file = GenerateThumbnailUseCase(
                 image_generator, template.thumbnail_instruction
             ).execute(args.generate_thumbnail)
+            release_image_generator = getattr(image_generator, "release", None)
+            if callable(release_image_generator):
+                release_image_generator()
             logger.info("サムネイル画像を保存しました: %s", thumbnail_file)
             history.record(run_id, "thumbnail_generated", thumbnail_file=str(thumbnail_file))
             history.record(run_id, "run_completed")
@@ -266,8 +282,10 @@ def run() -> None:
             quality_checker = QualityChecker(
                 load_quality_rules(quality_values), duration_provider
             )
+            expected_scene_size = _parse_image_size(str(image_values.get("scene_size", "")))
             quality_report = quality_checker.check_project(
-                args.generate_video, ImagePromptBuilder(template.image_style)
+                args.generate_video, ImagePromptBuilder(template.image_style),
+                expected_scene_size=expected_scene_size,
             )
             if quality_report.has_errors and settings.openai_api_key is not None:
                 retry_settings = video_settings.values["retry"]
@@ -565,9 +583,15 @@ def run() -> None:
                 max_images=int(image_settings["max_count"]),
             )
             image_inputs = tuple(sorted(args.generate_images.glob("scene*.txt")))
+            # thumbnail_model/thumbnail_sizeはシーン画像に影響しないため、
+            # サムネイル専用設定の変更でシーン画像キャッシュを無効化しないようfingerprintから除外する。
+            scene_image_settings = {
+                key: value for key, value in image_settings.items()
+                if key not in {"thumbnail_model", "thumbnail_size"}
+            }
             image_fingerprint = CacheManager.make_key(
-                str(provider_settings.get("image")),
-                json.dumps(image_settings, ensure_ascii=False, sort_keys=True),
+                plugin_manager.image_provider_name("scene"),
+                json.dumps(scene_image_settings, ensure_ascii=False, sort_keys=True),
                 "image-prompt-v2", image_style,
             )
             image_cache_key = CacheManager.make_file_key("image", image_inputs, image_fingerprint)
@@ -579,6 +603,9 @@ def run() -> None:
                 image_files = use_case.execute(args.generate_images)
                 if cache_manager is not None:
                     cache_manager.save_files(image_cache_key, "image", image_files)
+            release_image_generator = getattr(image_generator, "release", None)
+            if callable(release_image_generator):
+                release_image_generator()
             logger.info("%d件のPNGファイルを生成しました。", len(image_files))
             history.record(run_id, "scene_images_generated", image_count=len(image_files))
             history.record(run_id, "run_completed")

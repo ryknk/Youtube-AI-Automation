@@ -16,7 +16,9 @@ providers:
   # 音声合成のプロバイダー
   tts: voicevox
   # 画像生成のプロバイダー
-  image: bfl
+  image: 
+    scene: flux_schnell_local
+    thumbnail: bfl
 
 # テキスト生成モデルの設定
 text:
@@ -37,12 +39,37 @@ image:
   thumbnail_model: flux-2-pro
   # OpenAI画像プロバイダーへ戻した場合に使用するモデル
   openai_model: gpt-image-2
-  # シーン画像の生成サイズ
+  # シーン画像の生成サイズ（最終動画の解像度に合わせる。変更しないこと）
   scene_size: 1920x1080
   # サムネイル画像の生成サイズ
   thumbnail_size: 1280x720
   # OpenAI画像プロバイダーへ戻した場合の生成品質
   quality: high
+  # FLUX.1 Schnell Self-host（ローカルGPU実行）用の設定。
+  # providers.image（またはproviders.image.scene/thumbnail）を flux_schnell_local に
+  # した場合のみ使用される。詳細はREADME.mdの「FLUX.1 Schnell Self-host」を参照。
+  flux_schnell_local:
+    model_id: black-forest-labs/FLUX.1-schnell
+    # auto: CUDA検出時はcuda、未検出時はallow_cpu次第でcpu / cuda / cpu / mps を明示指定も可
+    device: auto
+    # auto: cuda時はbfloat16、cpu時はfloat32 / float16 / bfloat16 / float32 も指定可
+    dtype: auto
+    num_inference_steps: 4
+    guidance_scale: 0.0
+    # モデルへ渡す生成サイズ（scene_size/thumbnail_sizeとは独立。生成後にcover+中央クロップで整形する）
+    width: 1920
+    height: 1080
+    # nullの場合は毎回ランダムなseedを使用し、実際に使用したseedをログ・画像メタデータへ記録する
+    seed: null
+    enable_cpu_offload: false
+    enable_attention_slicing: false
+    low_vram_mode: false
+    # nullの場合はHugging Faceの既定キャッシュ（%USERPROFILE%\.cache\huggingface\hub）を使用する
+    model_cache_dir: null
+    # trueにしない限り、GPU未検出時にCPUへ自動フォールバックしない（意図しない長時間停止を防止）
+    allow_cpu: false
+    # 明示しない限りAPIへは自動フォールバックしない（意図しないAPI課金を防止）。例: bfl / openai
+    fallback_provider: null
 
 # 台本のシーン分割設定
 scenes:

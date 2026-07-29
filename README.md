@@ -371,6 +371,114 @@ providers:
 
 この場合は`image.openai_model`と`image.quality`が使用されます。
 
+## FLUX.1 Schnell Self-host（ローカルGPU画像生成）
+
+シーン画像をAPIではなくローカルGPU（Hugging Face Diffusers + FLUX.1 Schnell）で生成し、画像API費用を削減できます。サムネイルは従来どおりBFL/OpenAIのままにできます。
+
+### 概要
+
+- 追加されるプロバイダー: `flux_schnell_local`（`FluxSchnellLocalImageProvider`）
+- モデルは既定で`black-forest-labs/FLUX.1-schnell`（`image.flux_schnell_local.model_id`で変更可）
+- APIキーは不要。モデルは1ジョブ内で遅延ロード・再利用され、画像ごとに再ロードしない
+- 既定ではAPIへの自動フォールバックは無効（`fallback_provider: null`）。意図しないAPI課金を避けるため、明示設定した場合のみBFL/OpenAIへ切り替わる
+
+### 任意依存関係のインストール
+
+torch/diffusers等は通常利用者には不要な重い依存関係のため、既定ではインストールされません。Self-hostを使う場合のみ、以下のいずれかを実行してください。
+
+```powershell
+python -m pip install -r requirements-flux-local.txt
+```
+
+または
+
+```powershell
+python -m pip install -e ".[flux-local]"
+```
+
+torchはお使いのGPU/CUDAバージョンに対応したビルドが必要な場合があります。事前に[PyTorch公式サイト](https://pytorch.org/get-started/locally/)でご自身の環境に合ったインストールコマンドを確認してください。
+
+### モデルの初回ダウンロード
+
+初回生成時（またはCLIの`test-generate`実行時）に、Hugging Faceから`model_id`のモデルが自動ダウンロードされ、既定では`%USERPROFILE%\.cache\huggingface\hub`へキャッシュされます。保存先を変更する場合は`image.flux_schnell_local.model_cache_dir`を指定してください。以降はダウンロード済みモデルが再利用されます。
+
+### GPU・CUDAの確認方法
+
+画像を生成せず、APIも呼ばずに実行環境だけを確認できます。
+
+```powershell
+.\run.cmd image local-check
+```
+
+torch/CUDAの導入状況、GPU名、VRAM容量、bfloat16対応、モデルのローカルキャッシュ有無、設定された生成サイズ、Provider構築可否を表示します。
+
+明示的に1枚だけテスト画像を生成したい場合（実際にモデルロード・推論が走ります）：
+
+```powershell
+.\run.cmd image test-generate
+.\run.cmd image test-generate --output output\flux_local_check\sample.png --prompt "a calm mountain landscape"
+```
+
+### 設定例
+
+```yaml
+providers:
+  image:
+    scene: flux_schnell_local
+    thumbnail: bfl
+
+image:
+  scene_size: 1920x1080
+  thumbnail_size: 1280x720
+  flux_schnell_local:
+    model_id: black-forest-labs/FLUX.1-schnell
+    device: auto
+    dtype: auto
+    num_inference_steps: 4
+    guidance_scale: 0.0
+    width: 1344
+    height: 768
+    seed: null
+    enable_cpu_offload: false
+    enable_attention_slicing: false
+    low_vram_mode: false
+    model_cache_dir: null
+    allow_cpu: false
+    fallback_provider: null
+```
+
+`providers.image`は従来どおり単一の文字列（例: `image: bfl`）でも指定でき、その場合はシーン・サムネイル両方に同じプロバイダーが使われます（後方互換）。
+
+### シーンだけSelf-host、サムネイルはBFLのまま、にする方法
+
+`providers.image`を上記のように辞書形式にし、`scene`だけ`flux_schnell_local`、`thumbnail`は`bfl`（または`openai`）を指定してください。サムネイル生成は従来のBFL/OpenAI Providerのフローのまま変わりません。
+
+### VRAM不足時の対処
+
+CUDAメモリ不足時はエラーに`model_id`・`device`・`dtype`・生成サイズ・`cuda_oom=True`と対処法が表示されます。対策例:
+
+- `image.flux_schnell_local.num_inference_steps`やSelf-host生成サイズ（`width`/`height`）を下げる
+- `enable_cpu_offload: true`または`low_vram_mode: true`を有効化する
+- 他のGPUプロセスを終了する
+
+複数シーンの同時生成によるVRAM不足を避けるため、既定では逐次生成です。
+
+### CPU実行についての注意
+
+GPU（CUDA）が検出できない場合、既定では停止し、原因が分かるエラーを表示します（意図せず長時間のCPU実行が始まったように見えることを防ぐため）。CPU実行を許可する場合は、`image.flux_schnell_local.allow_cpu: true`を明示してください。CPU実行はGPUに比べて非常に低速です。
+
+### モデルキャッシュの保存先
+
+既定は`%USERPROFILE%\.cache\huggingface\hub`（Hugging Faceの標準キャッシュ）です。`image.flux_schnell_local.model_cache_dir`で変更できます。
+
+### APIへの自動フォールバックについて
+
+`fallback_provider`は既定で`null`（無効）です。Self-host生成が失敗しても、明示的に`fallback_provider: bfl`のように設定しない限り、BFL/OpenAI APIは呼び出されず、API課金は発生しません。
+
+### ライセンスの確認
+
+FLUX.1 Schnellのライセンス・利用条件はこのドキュメントでは判断しません。公開・収益化する動画に使用する前に、必ず[Hugging Face上の公式モデルカード](https://huggingface.co/black-forest-labs/FLUX.1-schnell)で最新のライセンス内容をご自身で確認してください。
+
 ## テスト
 
 ```powershell

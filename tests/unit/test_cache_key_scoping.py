@@ -38,6 +38,15 @@ def _image_fingerprint(provider: str, image_settings: dict, image_style: str) ->
     )
 
 
+def _scene_image_fingerprint(provider: str, image_settings: dict, image_style: str) -> str:
+    """cli/main.pyの--generate-imagesと同じ組み立て方（サムネイル専用設定を除外）を再現する。"""
+    scene_only_settings = {
+        key: value for key, value in image_settings.items()
+        if key not in {"thumbnail_model", "thumbnail_size"}
+    }
+    return _image_fingerprint(provider, scene_only_settings, image_style)
+
+
 def _subtitle_fingerprint(subtitle_values: dict, version: str) -> str:
     return CacheManager.make_key(json.dumps(subtitle_values, ensure_ascii=False, sort_keys=True), version)
 
@@ -101,6 +110,30 @@ class ImageCacheKeyScopingTests(unittest.TestCase):
     def test_scene_model_change_invalidates_key(self) -> None:
         before = _image_fingerprint("bfl", {"scene_model": "flux-2-pro"}, "style")
         after = _image_fingerprint("bfl", {"scene_model": "flux-2-max"}, "style")
+        self.assertNotEqual(before, after)
+
+    def test_provider_change_from_bfl_to_flux_schnell_local_invalidates_scene_key(self) -> None:
+        settings = {"scene_model": "flux-2-pro", "flux_schnell_local": {"model_id": "black-forest-labs/FLUX.1-schnell"}}
+        before = _scene_image_fingerprint("bfl", settings, "style")
+        after = _scene_image_fingerprint("flux_schnell_local", settings, "style")
+        self.assertNotEqual(before, after)
+
+    def test_thumbnail_only_setting_change_does_not_invalidate_scene_key(self) -> None:
+        before = _scene_image_fingerprint(
+            "flux_schnell_local", {"thumbnail_model": "flux-2-pro", "thumbnail_size": "1280x720"}, "style",
+        )
+        after = _scene_image_fingerprint(
+            "flux_schnell_local", {"thumbnail_model": "flux-2-max", "thumbnail_size": "1920x1080"}, "style",
+        )
+        self.assertEqual(before, after)
+
+    def test_flux_schnell_local_settings_change_invalidates_scene_key(self) -> None:
+        before = _scene_image_fingerprint(
+            "flux_schnell_local", {"flux_schnell_local": {"seed": 1, "num_inference_steps": 4}}, "style",
+        )
+        after = _scene_image_fingerprint(
+            "flux_schnell_local", {"flux_schnell_local": {"seed": 2, "num_inference_steps": 4}}, "style",
+        )
         self.assertNotEqual(before, after)
 
 

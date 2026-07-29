@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from PIL import Image, UnidentifiedImageError
+
 from youtube_generator.domain.audio_duration_provider import AudioDurationProvider
 from youtube_generator.domain.quality import (
     ProjectQualityReport,
@@ -84,7 +86,10 @@ class QualityChecker:
         self._rules = rules
         self._duration_provider = duration_provider
 
-    def check_project(self, project_dir: Path, image_prompt_builder: ImagePromptBuilder) -> ProjectQualityReport:
+    def check_project(
+        self, project_dir: Path, image_prompt_builder: ImagePromptBuilder,
+        expected_scene_size: tuple[int, int] | None = None,
+    ) -> ProjectQualityReport:
         script_file = project_dir / "script.txt"
         script = self._read_text(script_file)
         checks = self._check_script(script)
@@ -93,6 +98,7 @@ class QualityChecker:
         checks.extend(self._check_metadata(project_dir))
         checks.extend(self._check_prompts(scene_files, image_prompt_builder))
         checks.extend(self._check_media(project_dir))
+        checks.extend(self._check_images(scene_files, expected_scene_size))
         return ProjectQualityReport(str(project_dir), tuple(checks))
 
     def check_ending(
@@ -245,6 +251,47 @@ class QualityChecker:
             QualityCheckResult("字幕同期", QualitySeverity.ERROR if sync_error else QualitySeverity.PASS,
                 "字幕終端と音声時間が一致しません。" if sync_error else "字幕同期は適切です。", round(subtitle_duration or 0, 1)),
         ]
+
+    def _check_images(
+        self, scene_files: tuple[Path, ...], expected_size: tuple[int, int] | None,
+    ) -> list[QualityCheckResult]:
+        image_files = tuple(path.with_suffix(".png") for path in scene_files)
+        if not image_files:
+            return [QualityCheckResult("シーン画像", QualitySeverity.WARNING, "評価対象の画像がありません。")]
+
+        problems: list[str] = []
+        checked_count = 0
+        for image_file in image_files:
+            if not image_file.is_file():
+                problems.append(f"{image_file.name}: ファイルが見つかりません。")
+                continue
+            if image_file.stat().st_size == 0:
+                problems.append(f"{image_file.name}: ファイルサイズが0です。")
+                continue
+            try:
+                with Image.open(image_file) as image:
+                    image.verify()
+                with Image.open(image_file) as image:
+                    size = image.size
+            except (OSError, UnidentifiedImageError, ValueError) as error:
+                problems.append(f"{image_file.name}: 画像として読み込めません（{error}）。")
+                continue
+            checked_count += 1
+            if expected_size is not None and size != expected_size:
+                problems.append(
+                    f"{image_file.name}: 解像度が不正です（{size[0]}x{size[1]}、"
+                    f"期待値{expected_size[0]}x{expected_size[1]}）。"
+                )
+                continue
+            if expected_size is not None:
+                expected_ratio = expected_size[0] / expected_size[1]
+                actual_ratio = size[0] / size[1]
+                if abs(actual_ratio - expected_ratio) > 0.01:
+                    problems.append(f"{image_file.name}: アスペクト比が不正です。")
+
+        severity = QualitySeverity.ERROR if problems else QualitySeverity.PASS
+        message = "; ".join(problems) if problems else "全シーン画像を確認しました。"
+        return [QualityCheckResult("シーン画像", severity, message, checked_count)]
 
     @staticmethod
     def _read_text(file_path: Path) -> str:

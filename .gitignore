@@ -35,6 +35,7 @@ data/jobs.db
 # Generated artifacts
 cache/*
 !cache/.gitkeep
+huggingface/*
 generated_assets/
 output/*
 !output/.gitkeep

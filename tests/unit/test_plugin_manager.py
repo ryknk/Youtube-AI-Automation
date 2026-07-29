@@ -99,3 +99,96 @@ class PluginManagerTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "providers.image"):
             manager.create_image_provider({}, RetryPolicy(max_attempts=1))
+
+    @patch("youtube_generator.plugins.manager.FluxSchnellLocalImageProvider")
+    def test_flux_schnell_local_provider_created_for_scene(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(), {"image": "flux_schnell_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080", "thumbnail_size": "1280x720",
+            "flux_schnell_local": {"model_id": "org/model", "seed": 7},
+        }
+
+        manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        args = provider_class.call_args.args
+        self.assertEqual(args[0].model_id, "org/model")
+        self.assertEqual(args[0].seed, 7)
+        self.assertEqual(args[1], "1920x1080")
+
+    @patch("youtube_generator.plugins.manager.FluxSchnellLocalImageProvider")
+    def test_dict_form_providers_image_splits_scene_and_thumbnail(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(
+            Settings(bfl_api_key="test-key"),
+            {"image": {"scene": "flux_schnell_local", "thumbnail": "bfl"}}, {},
+        )
+        image_settings = {
+            "scene_size": "1920x1080", "thumbnail_size": "1280x720",
+            "scene_model": "flux-2-pro", "thumbnail_model": "flux-2-pro",
+            "flux_schnell_local": {},
+        }
+
+        manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+        self.assertEqual(provider_class.call_count, 1)
+
+        thumbnail_provider = manager.create_image_provider(
+            image_settings, RetryPolicy(max_attempts=1), size_setting="thumbnail_size",
+        )
+        from youtube_generator.plugins.image.bfl_image import BFLImageProvider
+        self.assertIsInstance(thumbnail_provider, BFLImageProvider)
+
+    def test_dict_form_missing_purpose_raises_error(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"image": {"scene": "openai"}}, {})
+
+        with self.assertRaisesRegex(ValueError, "providers.image.thumbnail"):
+            manager.create_image_provider({}, RetryPolicy(max_attempts=1), size_setting="thumbnail_size")
+
+    def test_image_provider_name_resolves_per_purpose(self) -> None:
+        manager = PluginManager(
+            Settings(), {"image": {"scene": "flux_schnell_local", "thumbnail": "bfl"}}, {},
+        )
+
+        self.assertEqual(manager.image_provider_name("scene"), "flux_schnell_local")
+        self.assertEqual(manager.image_provider_name("thumbnail"), "bfl")
+
+    def test_image_provider_name_supports_legacy_string_form(self) -> None:
+        manager = PluginManager(Settings(), {"image": "bfl"}, {})
+
+        self.assertEqual(manager.image_provider_name("scene"), "bfl")
+        self.assertEqual(manager.image_provider_name("thumbnail"), "bfl")
+
+    @patch("youtube_generator.plugins.manager.BFLImageProvider")
+    @patch("youtube_generator.plugins.manager.FluxSchnellLocalImageProvider")
+    def test_fallback_provider_wraps_primary_with_bfl(self, flux_provider_class, bfl_provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(
+            Settings(bfl_api_key="test-key"), {"image": "flux_schnell_local"}, {},
+        )
+        image_settings = {
+            "scene_size": "1920x1080", "scene_model": "flux-2-pro",
+            "flux_schnell_local": {"fallback_provider": "bfl"},
+        }
+
+        from youtube_generator.plugins.image.image_provider_fallback import FallbackImageProvider
+        provider = manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertIsInstance(provider, FallbackImageProvider)
+        flux_provider_class.assert_called_once()
+        bfl_provider_class.assert_called_once()
+
+    def test_fallback_provider_rejects_flux_schnell_local_itself(self) -> None:
+        manager = PluginManager(Settings(), {"image": "flux_schnell_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080",
+            "flux_schnell_local": {"fallback_provider": "flux_schnell_local"},
+        }
+
+        with self.assertRaisesRegex(ValueError, "fallback_provider"):
+            manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+    def test_flux_schnell_local_without_fallback_returns_primary_directly(self) -> None:
+        manager = PluginManager(Settings(), {"image": "flux_schnell_local"}, {})
+        image_settings = {"scene_size": "1920x1080", "flux_schnell_local": {}}
+
+        from youtube_generator.plugins.image.flux_schnell_local_image import FluxSchnellLocalImageProvider
+        provider = manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertIsInstance(provider, FluxSchnellLocalImageProvider)
