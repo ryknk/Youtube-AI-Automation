@@ -58,11 +58,11 @@ image:
     device: auto
     # auto: cuda時はbfloat16、cpu時はfloat32 / float16 / bfloat16 / float32 も指定可
     dtype: auto
-    num_inference_steps: 4
+    num_inference_steps: 6
     guidance_scale: 0.0
     # モデルへ渡す生成サイズ（scene_size/thumbnail_sizeとは独立。生成後にcover+中央クロップで整形する）
-    width: 1280
-    height: 720
+    width: 1344
+    height: 768
     # nullの場合は毎回ランダムなseedを使用し、実際に使用したseedをログ・画像メタデータへ記録する
     seed: null
     enable_cpu_offload: false

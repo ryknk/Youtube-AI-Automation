@@ -16,6 +16,30 @@ from youtube_generator.services.subtitle_style import build_ass_subtitle_style
 SCENE_IMAGE_PATTERN = re.compile(r"scene(\d{2})_(\d{2})\.png$", re.IGNORECASE)
 SRT_TIMING_PATTERN = re.compile(r"(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})")
 
+# zoompanのズーム速度・可動範囲。
+# zoompanの実際のクロップ幅/高さは入力フレーム基準の iw/zoom, ih/zoom になるため、
+# x/y式は ow/oh ではなく iw/ih を基準に計算する（ow/zoom基準だと中心・端がずれる）。
+# また画像を大きめ(_ZOOM_SUPERSAMPLE_FACTOR倍)にscaleしてからzoompanへ渡すことで、
+# 1フレームあたりの移動量が1px未満に量子化されて動きがガタつく現象を防ぐ
+# （小さい入力のままだと移動量が0pxの停止フレームと数px分の跳躍フレームが交互になり、
+# カクカクした見た目になる）。
+_ZOOM_SUPERSAMPLE_FACTOR = 4.0
+_ZOOM_IN_RATE = 0.00015
+_ZOOM_MAX_SCALE = 1.10
+_ZOOM_MIN_SCALE = 1.0
+_PAN_RATE = 0.0006
+
+# シーン画像に適用するズーム/パン演出のバリエーション。
+# (zoom式, x式, y式) の組で、画像ごとに順番に切り替えてワンパターン化を防ぐ。
+_ZOOM_PAN_EFFECTS: tuple[tuple[str, str, str], ...] = (
+    (f"min(1+on*{_ZOOM_IN_RATE},{_ZOOM_MAX_SCALE})", "(iw-iw/zoom)/2", "(ih-ih/zoom)/2"),
+    (f"max({_ZOOM_MAX_SCALE}-on*{_ZOOM_IN_RATE},{_ZOOM_MIN_SCALE})", "(iw-iw/zoom)/2", "(ih-ih/zoom)/2"),
+    (f"{_ZOOM_MAX_SCALE}", f"min(on*ow*{_PAN_RATE},(iw-iw/zoom))", "(ih-ih/zoom)/2"),
+    (f"{_ZOOM_MAX_SCALE}", f"max((iw-iw/zoom)-on*ow*{_PAN_RATE},0)", "(ih-ih/zoom)/2"),
+    (f"min(1+on*{_ZOOM_IN_RATE},{_ZOOM_MAX_SCALE})", "0", "0"),
+    (f"min(1+on*{_ZOOM_IN_RATE},{_ZOOM_MAX_SCALE})", "(iw-iw/zoom)", "(ih-ih/zoom)"),
+)
+
 
 @dataclass(frozen=True, slots=True)
 class VideoRenderSettings:
@@ -166,17 +190,22 @@ class FfmpegVideoRenderer(VideoRenderer):
         filters: list[str] = []
         concat_inputs: list[str] = []
         gap_seconds = self._settings.gap_seconds
+        effect_index = 0
         for scene_index, (scene, (image_inputs, audio_input)) in enumerate(zip(scenes, input_layout)):
             video_label = f"v{scene_index}"
             if len(image_inputs) == 1:
-                filters.append(self._scaled_zoompan_filter(image_inputs[0], video_label))
+                filters.append(self._scaled_zoompan_filter(image_inputs[0], video_label, effect_index))
+                effect_index += 1
             else:
                 # シーン内の複数画像を順番にズーム演出したうえで連結し、シーンとして1本の映像にする
                 # （zoompanはフィルターごとにズーム量がリセットされるため、切り替えごとに新鮮な見た目になる）。
+                # effect_indexを画像ごとに進めることで、ズームイン/ズームアウト/パンなど
+                # 複数の演出パターンを順番に使い分け、ワンパターンな見た目を避ける。
                 sub_labels = []
                 for sub_index, image_input in enumerate(image_inputs):
                     sub_label = f"v{scene_index}_{sub_index}"
-                    filters.append(self._scaled_zoompan_filter(image_input, sub_label))
+                    filters.append(self._scaled_zoompan_filter(image_input, sub_label, effect_index))
+                    effect_index += 1
                     sub_labels.append(f"[{sub_label}]")
                 filters.append(f"{''.join(sub_labels)}concat=n={len(image_inputs)}:v=1:a=0[{video_label}]")
             if scene_index == len(scenes) - 1 and gap_seconds > 0:
@@ -222,12 +251,14 @@ class FfmpegVideoRenderer(VideoRenderer):
             filters.append("[narration][bgm]amix=inputs=2:duration=first:weights='1 1':normalize=0[audio]")
         return ";".join(filters)
 
-    def _scaled_zoompan_filter(self, image_input: int, output_label: str) -> str:
-        scale_width = round(self._settings.width * 1.1)
-        scale_height = round(self._settings.height * 1.1)
+    def _scaled_zoompan_filter(self, image_input: int, output_label: str, effect_index: int) -> str:
+        scale_width = round(self._settings.width * _ZOOM_SUPERSAMPLE_FACTOR)
+        scale_height = round(self._settings.height * _ZOOM_SUPERSAMPLE_FACTOR)
+        zoom_expr, x_expr, y_expr = _ZOOM_PAN_EFFECTS[effect_index % len(_ZOOM_PAN_EFFECTS)]
         return (
             f"[{image_input}:v]scale={scale_width}:{scale_height},"
-            f"zoompan=z='min(1+on*0.00015,1.10)':d=1:s={self._settings.width}x{self._settings.height}:fps={self._settings.fps},"
+            f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}':d=1:"
+            f"s={self._settings.width}x{self._settings.height}:fps={self._settings.fps},"
             f"setsar=1[{output_label}]"
         )
 
