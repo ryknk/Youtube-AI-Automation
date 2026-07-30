@@ -8,10 +8,12 @@ from pathlib import Path
 from youtube_generator.domain.audio_duration_provider import AudioDurationProvider
 from youtube_generator.domain.video_renderer import VideoRenderer
 from youtube_generator.exceptions import VideoRenderingError
+from youtube_generator.services.scene_image_timing import build_scene_segments, distribute_duration
+from youtube_generator.services.subtitle_alignment import SubtitleAlignmentProvider
 from youtube_generator.services.subtitle_style import build_ass_subtitle_style
 
 
-SCENE_IMAGE_PATTERN = re.compile(r"scene(\d{2})\.png$", re.IGNORECASE)
+SCENE_IMAGE_PATTERN = re.compile(r"scene(\d{2})_(\d{2})\.png$", re.IGNORECASE)
 SRT_TIMING_PATTERN = re.compile(r"(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})")
 
 
@@ -41,11 +43,19 @@ class VideoRenderSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class RenderImage:
+    """シーン内で表示する1枚の画像とその表示秒数。"""
+
+    image_file: Path
+    duration_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
 class RenderScene:
     """レンダリング対象となる1シーンの素材。"""
 
     index: int
-    image_file: Path
+    images: tuple[RenderImage, ...]
     audio_file: Path
     duration_seconds: float
 
@@ -53,13 +63,20 @@ class RenderScene:
 class FfmpegVideoRenderer(VideoRenderer):
     """静止画ズーム・字幕・BGMを含むH.264 MP4を生成する。"""
 
-    def __init__(self, duration_provider: AudioDurationProvider, settings: VideoRenderSettings, executable: str = "ffmpeg") -> None:
+    def __init__(
+        self,
+        duration_provider: AudioDurationProvider,
+        settings: VideoRenderSettings,
+        executable: str = "ffmpeg",
+        alignment_provider: SubtitleAlignmentProvider | None = None,
+    ) -> None:
         self._duration_provider = duration_provider
         self._settings = settings
         self._executable = executable
+        self._alignment_provider = alignment_provider
 
     def render(self, scenes_dir: Path, output_file: Path) -> None:
-        """sceneNN.pngとsceneNN.mp3、subtitles.srtから動画を出力する。"""
+        """sceneNN_MM.pngとsceneNN.mp3、subtitles.srtから動画を出力する。"""
         scenes = self._find_scenes(scenes_dir)
         subtitle_file = scenes_dir / "subtitles.srt"
         if not subtitle_file.is_file():
@@ -101,47 +118,73 @@ class FfmpegVideoRenderer(VideoRenderer):
 
         gap_seconds = self._settings.gap_seconds
         command = [self._executable, "-y"]
-        for index, scene in enumerate(scenes):
-            # 最後のシーンはナレーション終了後も画像を延長し、エンディングとの区切りを明確にする。
-            # ズームが同じzoompanフィルター内で継続するよう、別セグメントではなく画像の表示秒数自体を延ばす。
-            extended = gap_seconds if index == len(scenes) - 1 else 0.0
-            # image2's default is 25 fps.  Keep its input clock aligned with
-            # zoompan/output fps so the final scene is not shortened.
-            command.extend([
-                "-loop", "1", "-framerate", str(self._settings.fps),
-                "-t", f"{scene.duration_seconds + extended:.3f}", "-i", str(scene.image_file),
-            ])
+        input_layout: list[tuple[tuple[int, ...], int]] = []
+        input_index = 0
+        for scene_index, scene in enumerate(scenes):
+            is_last_scene = scene_index == len(scenes) - 1
+            last_image_position = len(scene.images) - 1
+            image_inputs: list[int] = []
+            for image_position, image in enumerate(scene.images):
+                # 最後のシーンの最後の画像だけナレーション終了後も延長し、エンディングとの区切りを明確にする。
+                # ズームが同じzoompanフィルター内で継続するよう、別セグメントではなく画像の表示秒数自体を延ばす。
+                extended = gap_seconds if is_last_scene and image_position == last_image_position else 0.0
+                # image2's default is 25 fps.  Keep its input clock aligned with
+                # zoompan/output fps so the final scene is not shortened.
+                command.extend([
+                    "-loop", "1", "-framerate", str(self._settings.fps),
+                    "-t", f"{image.duration_seconds + extended:.3f}", "-i", str(image.image_file),
+                ])
+                image_inputs.append(input_index)
+                input_index += 1
             command.extend(["-i", str(scene.audio_file)])
+            audio_input = input_index
+            input_index += 1
+            input_layout.append((tuple(image_inputs), audio_input))
 
         bgm_input_index: int | None = None
         if self._settings.bgm_enabled:
-            bgm_input_index = len(scenes) * 2
+            bgm_input_index = input_index
             if self._settings.bgm_loop:
                 command.extend(["-stream_loop", "-1"])
             command.extend(["-i", str(self._settings.bgm_file)])
 
         command.extend([
-            "-filter_complex", self._build_filter_complex(scenes, subtitle_file, bgm_input_index),
+            "-filter_complex", self._build_filter_complex(scenes, input_layout, subtitle_file, bgm_input_index),
             "-map", "[video]", "-map", "[audio]", "-c:v", "libx264", "-preset", "medium",
             "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(self._settings.fps), "-c:a", "aac",
             "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(output_file),
         ])
         return command
 
-    def _build_filter_complex(self, scenes: tuple[RenderScene, ...], subtitle_file: Path, bgm_input_index: int | None) -> str:
+    def _build_filter_complex(
+        self,
+        scenes: tuple[RenderScene, ...],
+        input_layout: list[tuple[tuple[int, ...], int]],
+        subtitle_file: Path,
+        bgm_input_index: int | None,
+    ) -> str:
         filters: list[str] = []
         concat_inputs: list[str] = []
         gap_seconds = self._settings.gap_seconds
-        for scene_index, _ in enumerate(scenes):
-            image_input = scene_index * 2
-            audio_input = image_input + 1
-            filters.append(self._scaled_zoompan_filter(image_input, f"v{scene_index}"))
+        for scene_index, (scene, (image_inputs, audio_input)) in enumerate(zip(scenes, input_layout)):
+            video_label = f"v{scene_index}"
+            if len(image_inputs) == 1:
+                filters.append(self._scaled_zoompan_filter(image_inputs[0], video_label))
+            else:
+                # シーン内の複数画像を順番にズーム演出したうえで連結し、シーンとして1本の映像にする
+                # （zoompanはフィルターごとにズーム量がリセットされるため、切り替えごとに新鮮な見た目になる）。
+                sub_labels = []
+                for sub_index, image_input in enumerate(image_inputs):
+                    sub_label = f"v{scene_index}_{sub_index}"
+                    filters.append(self._scaled_zoompan_filter(image_input, sub_label))
+                    sub_labels.append(f"[{sub_label}]")
+                filters.append(f"{''.join(sub_labels)}concat=n={len(image_inputs)}:v=1:a=0[{video_label}]")
             if scene_index == len(scenes) - 1 and gap_seconds > 0:
                 # 延長した画像の表示秒数に合わせ、ナレーション終了後を無音でpadする。
                 filters.append(f"[{audio_input}:a]apad=pad_dur={gap_seconds:.3f}[a{scene_index}]")
-                concat_inputs.extend([f"[v{scene_index}]", f"[a{scene_index}]"])
+                concat_inputs.extend([f"[{video_label}]", f"[a{scene_index}]"])
             else:
-                concat_inputs.extend([f"[v{scene_index}]", f"[{audio_input}:a]"])
+                concat_inputs.extend([f"[{video_label}]", f"[{audio_input}:a]"])
 
         filters.append(f"{''.join(concat_inputs)}concat=n={len(scenes)}:v=1:a=1[concatenated_video][narration]")
         subtitle_path = self._escape_filter_path(subtitle_file)
@@ -191,17 +234,40 @@ class FfmpegVideoRenderer(VideoRenderer):
     def _find_scenes(self, scenes_dir: Path) -> tuple[RenderScene, ...]:
         if not scenes_dir.is_dir():
             raise FileNotFoundError(f"シーンフォルダが見つかりません: {scenes_dir}")
-        scenes: list[RenderScene] = []
+        images_by_scene: dict[int, list[tuple[int, Path]]] = {}
         for image_file in scenes_dir.glob("scene*.png"):
             match = SCENE_IMAGE_PATTERN.fullmatch(image_file.name)
             if not match:
                 continue
             index = int(match.group(1))
-            audio_file = image_file.with_suffix(".mp3")
+            sub_index = int(match.group(2))
+            images_by_scene.setdefault(index, []).append((sub_index, image_file))
+
+        scenes: list[RenderScene] = []
+        for index in sorted(images_by_scene):
+            image_files = tuple(path for _, path in sorted(images_by_scene[index]))
+            audio_file = image_files[0].with_name(f"scene{index:02d}.mp3")
             if not audio_file.is_file():
                 raise FileNotFoundError(f"対応する音声ファイルが見つかりません: {audio_file}")
-            scenes.append(RenderScene(index, image_file, audio_file, self._duration_provider.get_duration_seconds(audio_file)))
-        return tuple(sorted(scenes, key=lambda scene: scene.index))
+            duration = self._duration_provider.get_duration_seconds(audio_file)
+            durations = self._resolve_image_durations(image_files, audio_file, duration, index)
+            images = tuple(RenderImage(path, seconds) for path, seconds in zip(image_files, durations))
+            scenes.append(RenderScene(index, images, audio_file, duration))
+        return tuple(scenes)
+
+    def _resolve_image_durations(
+        self, image_files: tuple[Path, ...], audio_file: Path, duration: float, scene_index: int,
+    ) -> tuple[float, ...]:
+        if len(image_files) == 1:
+            return (duration,)
+        text_file = audio_file.with_suffix(".txt")
+        if not text_file.is_file():
+            return distribute_duration(len(image_files), duration, ())
+        text = text_file.read_text(encoding="utf-8-sig")
+        alignment_file = audio_file.with_suffix(".alignment.json")
+        segments = build_scene_segments(text, duration, scene_index, alignment_file, self._alignment_provider)
+        boundary_times = tuple(segment.end_time for segment in segments[:-1])
+        return distribute_duration(len(image_files), duration, boundary_times)
 
     @staticmethod
     def _escape_filter_path(path: Path) -> str:

@@ -255,39 +255,41 @@ class QualityChecker:
     def _check_images(
         self, scene_files: tuple[Path, ...], expected_size: tuple[int, int] | None,
     ) -> list[QualityCheckResult]:
-        image_files = tuple(path.with_suffix(".png") for path in scene_files)
-        if not image_files:
+        if not scene_files:
             return [QualityCheckResult("シーン画像", QualitySeverity.WARNING, "評価対象の画像がありません。")]
 
         problems: list[str] = []
         checked_count = 0
-        for image_file in image_files:
-            if not image_file.is_file():
-                problems.append(f"{image_file.name}: ファイルが見つかりません。")
+        for scene_file in scene_files:
+            # 1シーンにつき複数枚（sceneNN_01.png, sceneNN_02.png, ...）生成されるため、まとめて検査する。
+            image_files = tuple(sorted(scene_file.parent.glob(f"{scene_file.stem}_*.png")))
+            if not image_files:
+                problems.append(f"{scene_file.stem}_*.png: ファイルが見つかりません。")
                 continue
-            if image_file.stat().st_size == 0:
-                problems.append(f"{image_file.name}: ファイルサイズが0です。")
-                continue
-            try:
-                with Image.open(image_file) as image:
-                    image.verify()
-                with Image.open(image_file) as image:
-                    size = image.size
-            except (OSError, UnidentifiedImageError, ValueError) as error:
-                problems.append(f"{image_file.name}: 画像として読み込めません（{error}）。")
-                continue
-            checked_count += 1
-            if expected_size is not None and size != expected_size:
-                problems.append(
-                    f"{image_file.name}: 解像度が不正です（{size[0]}x{size[1]}、"
-                    f"期待値{expected_size[0]}x{expected_size[1]}）。"
-                )
-                continue
-            if expected_size is not None:
-                expected_ratio = expected_size[0] / expected_size[1]
-                actual_ratio = size[0] / size[1]
-                if abs(actual_ratio - expected_ratio) > 0.01:
-                    problems.append(f"{image_file.name}: アスペクト比が不正です。")
+            for image_file in image_files:
+                if image_file.stat().st_size == 0:
+                    problems.append(f"{image_file.name}: ファイルサイズが0です。")
+                    continue
+                try:
+                    with Image.open(image_file) as image:
+                        image.verify()
+                    with Image.open(image_file) as image:
+                        size = image.size
+                except (OSError, UnidentifiedImageError, ValueError) as error:
+                    problems.append(f"{image_file.name}: 画像として読み込めません（{error}）。")
+                    continue
+                checked_count += 1
+                if expected_size is not None and size != expected_size:
+                    problems.append(
+                        f"{image_file.name}: 解像度が不正です（{size[0]}x{size[1]}、"
+                        f"期待値{expected_size[0]}x{expected_size[1]}）。"
+                    )
+                    continue
+                if expected_size is not None:
+                    expected_ratio = expected_size[0] / expected_size[1]
+                    actual_ratio = size[0] / size[1]
+                    if abs(actual_ratio - expected_ratio) > 0.01:
+                        problems.append(f"{image_file.name}: アスペクト比が不正です。")
 
         severity = QualitySeverity.ERROR if problems else QualitySeverity.PASS
         message = "; ".join(problems) if problems else "全シーン画像を確認しました。"

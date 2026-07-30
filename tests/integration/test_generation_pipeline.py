@@ -32,7 +32,10 @@ def test_mocked_generation_pipeline_creates_all_intermediate_artifacts(
     script_file = GenerateScriptUseCase(mock_text_provider, temp_output_dir).execute("テストテーマ", template, "run-1")
     scene_files = SplitScriptUseCase(MockSplitter()).execute(script_file)
     audio_files = GenerateSceneAudioUseCase(mock_tts_provider).execute(script_file.parent)
-    image_files = GenerateSceneImagesUseCase(ImagePromptBuilder("realistic"), mock_image_provider).execute(script_file.parent)
+    image_files = GenerateSceneImagesUseCase(
+        ImagePromptBuilder("realistic"), mock_image_provider,
+        min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+    ).execute(script_file.parent)
     subtitle_file = GenerateSubtitlesUseCase(MockDurationProvider(), SrtBuilder()).execute(script_file.parent)
 
     assert script_file.is_file()

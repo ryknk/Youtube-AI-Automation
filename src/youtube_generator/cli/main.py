@@ -32,6 +32,7 @@ from youtube_generator.services.quality_checker import QualityChecker, ScriptQua
 from youtube_generator.services.retry import RetryPolicy
 from youtube_generator.services.image_prompt_builder import ImagePromptBuilder
 from youtube_generator.services.srt_builder import SrtBuilder
+from youtube_generator.services.subtitle_alignment import JsonSubtitleAlignmentProvider
 from youtube_generator.services.subtitle_splitter import (
     SUBTITLE_SPLITTER_VERSION,
     SubtitleSettings,
@@ -337,6 +338,7 @@ def run() -> None:
                         subtitle_values.get("background_opacity", 0.6)
                     ),
                 ),
+                alignment_provider=JsonSubtitleAlignmentProvider(),
             )
             video_inputs = (
                 tuple(sorted(args.generate_video.glob("scene*.png")))
@@ -571,8 +573,11 @@ def run() -> None:
         if args.generate_images:
             retry_settings = video_settings.values["retry"]
             image_settings = video_settings.values["image"]
+            quality_values = video_settings.values["quality"]
             if not isinstance(retry_settings, dict) or not isinstance(image_settings, dict):
                 raise ValueError("config.yaml の retry または image 設定が不正です。")
+            if not isinstance(quality_values, dict):
+                raise ValueError("config.yaml の quality 設定が不正です。")
             image_generator = plugin_manager.create_image_provider(
                 image_settings, RetryPolicy.from_settings(retry_settings)
             )
@@ -580,6 +585,9 @@ def run() -> None:
             use_case = GenerateSceneImagesUseCase(
                 ImagePromptBuilder(image_style),
                 image_generator,
+                min_display_seconds=float(image_settings.get("min_display_seconds", 5.0)),
+                max_display_seconds=float(image_settings.get("max_display_seconds", 10.0)),
+                characters_per_second=float(quality_values["characters_per_second"]),
                 max_images=int(image_settings["max_count"]),
             )
             image_inputs = tuple(sorted(args.generate_images.glob("scene*.txt")))
@@ -593,6 +601,7 @@ def run() -> None:
                 plugin_manager.image_provider_name("scene"),
                 json.dumps(scene_image_settings, ensure_ascii=False, sort_keys=True),
                 "image-prompt-v2", image_style,
+                str(quality_values["characters_per_second"]),
             )
             image_cache_key = CacheManager.make_file_key("image", image_inputs, image_fingerprint)
             if cache_manager is not None and cache_manager.exists(image_cache_key, "image"):

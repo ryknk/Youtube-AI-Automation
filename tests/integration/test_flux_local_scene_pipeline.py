@@ -100,18 +100,22 @@ def test_mock_flux_pipeline_scene_images_render_with_existing_renderer(tmp_path:
          patch.object(FluxSchnellLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
         image_files = GenerateSceneImagesUseCase(
             ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), provider,
+            min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
         ).execute(scenes_dir)
         provider.release()
 
-    assert [file.name for file in image_files] == ["scene01.png", "scene02.png"]
+    assert [file.name for file in image_files] == ["scene01_01.png", "scene02_01.png"]
     for image_file in image_files:
         with Image.open(image_file) as image:
             # Self-host生成サイズ(4:3)とは異なる最終シーンサイズ(16:9)へ、
             # 縦横比を保ったまま整形されていることを確認する。
             assert image.size == (output_width, output_height)
 
-    for image_file in image_files:
-        audio_file = image_file.with_suffix(".mp3")
+    # 画像はシーン単位(sceneNN_MM.png)だが音声はシーン単位(sceneNN.mp3)で1本のため、
+    # 画像ファイル名から末尾の "_MM" を除いた名前で音声ファイルを用意する。
+    scene_indices = sorted({int(image_file.stem.split("_")[0][5:]) for image_file in image_files})
+    for scene_index in scene_indices:
+        audio_file = scenes_dir / f"scene{scene_index:02d}.mp3"
         subprocess.run(
             [ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", str(audio_file)],
             check=True, capture_output=True,

@@ -45,6 +45,10 @@ image:
   thumbnail_size: 1280x720
   # OpenAI画像プロバイダーへ戻した場合の生成品質
   quality: high
+  # 1シーン内で1枚の画像を表示する最小秒数（字幕の自然な区切りをこの秒数未満では切り替えない）
+  min_display_seconds: 3.0
+  # 1シーン内で1枚の画像を表示する最大秒数（この秒数を超える前に次の画像へ切り替える）
+  max_display_seconds: 15.0
   # FLUX.1 Schnell Self-host（ローカルGPU実行）用の設定。
   # providers.image（またはproviders.image.scene/thumbnail）を flux_schnell_local に
   # した場合のみ使用される。詳細はREADME.mdの「FLUX.1 Schnell Self-host」を参照。
@@ -57,15 +61,15 @@ image:
     num_inference_steps: 4
     guidance_scale: 0.0
     # モデルへ渡す生成サイズ（scene_size/thumbnail_sizeとは独立。生成後にcover+中央クロップで整形する）
-    width: 1920
-    height: 1080
+    width: 1280
+    height: 720
     # nullの場合は毎回ランダムなseedを使用し、実際に使用したseedをログ・画像メタデータへ記録する
     seed: null
     enable_cpu_offload: false
     enable_attention_slicing: false
-    low_vram_mode: false
+    low_vram_mode: true
     # nullの場合はHugging Faceの既定キャッシュ（%USERPROFILE%\.cache\huggingface\hub）を使用する
-    model_cache_dir: null
+    model_cache_dir: huggingface\model_cache
     # trueにしない限り、GPU未検出時にCPUへ自動フォールバックしない（意図しない長時間停止を防止）
     allow_cpu: false
     # 明示しない限りAPIへは自動フォールバックしない（意図しないAPI課金を防止）。例: bfl / openai

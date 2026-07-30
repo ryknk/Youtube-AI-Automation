@@ -20,7 +20,7 @@ def _write_valid_scene_project(project_dir: Path, image_size: tuple[int, int] = 
     project_dir.joinpath("script.txt").write_text(("これは安全な台本です。" * 10) + "\n" + ("これは別の台本です。" * 10), encoding="utf-8")
     project_dir.joinpath("scene01.txt").write_text("十分な長さを持つシーンの本文です。", encoding="utf-8")
     project_dir.joinpath("scene01.mp3").write_bytes(b"mp3")
-    Image.new("RGB", image_size, color="red").save(project_dir / "scene01.png")
+    Image.new("RGB", image_size, color="red").save(project_dir / "scene01_01.png")
     project_dir.joinpath("subtitles.srt").write_text(
         "1\n00:00:00,000 --> 00:00:02,000\n字幕\n", encoding="utf-8"
     )
@@ -58,7 +58,7 @@ class QualityCheckerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             project_dir = Path(temporary_directory)
             _write_valid_scene_project(project_dir)
-            (project_dir / "scene01.png").unlink()
+            (project_dir / "scene01_01.png").unlink()
             checker = QualityChecker(QualityRules(10, 1000, 6.0, (), 2), FakeDurationProvider())  # type: ignore[arg-type]
 
             report = checker.check_project(project_dir, ImagePromptBuilder("realistic"), expected_scene_size=(1920, 1080))
@@ -72,7 +72,7 @@ class QualityCheckerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             project_dir = Path(temporary_directory)
             _write_valid_scene_project(project_dir)
-            (project_dir / "scene01.png").write_bytes(b"")
+            (project_dir / "scene01_01.png").write_bytes(b"")
             checker = QualityChecker(QualityRules(10, 1000, 6.0, (), 2), FakeDurationProvider())  # type: ignore[arg-type]
 
             report = checker.check_project(project_dir, ImagePromptBuilder("realistic"), expected_scene_size=(1920, 1080))
@@ -85,7 +85,7 @@ class QualityCheckerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             project_dir = Path(temporary_directory)
             _write_valid_scene_project(project_dir)
-            (project_dir / "scene01.png").write_bytes(b"not a valid png")
+            (project_dir / "scene01_01.png").write_bytes(b"not a valid png")
             checker = QualityChecker(QualityRules(10, 1000, 6.0, (), 2), FakeDurationProvider())  # type: ignore[arg-type]
 
             report = checker.check_project(project_dir, ImagePromptBuilder("realistic"), expected_scene_size=(1920, 1080))
