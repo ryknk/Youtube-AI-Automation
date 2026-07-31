@@ -40,6 +40,9 @@ class FluxSchnellLocalSettings:
     width: int = 1344
     height: int = 768
     seed: int | None = None
+    # FLUX.1-schnellは公式サンプルでmax_sequence_length=256を使用して蒸留・検証されている。
+    # これより長いプロンプトは切り捨てられるか、学習時と異なる長さとして扱われ品質が不安定になる。
+    max_sequence_length: int = 256
     enable_cpu_offload: bool = False
     enable_attention_slicing: bool = False
     low_vram_mode: bool = False
@@ -71,6 +74,7 @@ class FluxSchnellLocalSettings:
                 width=int(values.get("width", 1344)),
                 height=int(values.get("height", 768)),
                 seed=int(seed_value) if seed_value is not None else None,
+                max_sequence_length=int(values.get("max_sequence_length", 256)),
                 enable_cpu_offload=bool(values.get("enable_cpu_offload", False)),
                 enable_attention_slicing=bool(values.get("enable_attention_slicing", False)),
                 low_vram_mode=bool(values.get("low_vram_mode", False)),
@@ -107,10 +111,10 @@ class FluxSchnellLocalImageProvider(ImageProvider):
         generator = torch.Generator(device=self._generator_device()).manual_seed(seed)
         self._logger.info(
             "FLUXローカル画像生成を開始します: model_id=%s, device=%s, dtype=%s, "
-            "steps=%d, guidance_scale=%s, size=%dx%d, seed=%d",
+            "steps=%d, guidance_scale=%s, size=%dx%d, max_sequence_length=%d, seed=%d",
             self._settings.model_id, self._resolved_device, self._resolved_dtype,
             self._settings.num_inference_steps, self._settings.guidance_scale,
-            self._settings.width, self._settings.height, seed,
+            self._settings.width, self._settings.height, self._settings.max_sequence_length, seed,
         )
         generation_kwargs: dict[str, Any] = {
             "prompt": prompt,
@@ -118,6 +122,7 @@ class FluxSchnellLocalImageProvider(ImageProvider):
             "height": self._settings.height,
             "num_inference_steps": self._settings.num_inference_steps,
             "guidance_scale": self._settings.guidance_scale,
+            "max_sequence_length": self._settings.max_sequence_length,
             "generator": generator,
         }
         if self._settings.negative_prompt:

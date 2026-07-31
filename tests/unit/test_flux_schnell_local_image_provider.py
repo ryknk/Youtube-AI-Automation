@@ -183,7 +183,27 @@ class FluxSchnellLocalImageProviderTests(unittest.TestCase):
         self.assertEqual((call["width"], call["height"]), (800, 600))
         self.assertEqual(call["num_inference_steps"], 4)
         self.assertEqual(call["guidance_scale"], 0.0)
+        self.assertEqual(call["max_sequence_length"], 256)
         self.assertEqual(call["generator"].seed, 123)
+
+    def test_max_sequence_length_defaults_to_256_and_is_configurable(self) -> None:
+        default_settings = FluxSchnellLocalSettings.from_mapping({})
+        self.assertEqual(default_settings.max_sequence_length, 256)
+
+        custom_settings = FluxSchnellLocalSettings.from_mapping({"max_sequence_length": 512, "allow_cpu": True})
+        self.assertEqual(custom_settings.max_sequence_length, 512)
+
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        provider = FluxSchnellLocalImageProvider(custom_settings, "640x360")
+
+        with patch.object(FluxSchnellLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(FluxSchnellLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("prompt", self.output_file)
+
+        self.assertEqual(pipeline.calls[0]["max_sequence_length"], 512)
 
     def test_generate_image_saves_image_resized_to_output_size_preserving_aspect(self) -> None:
         source_image = Image.new("RGB", (800, 600), color="blue")

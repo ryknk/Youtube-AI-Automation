@@ -32,7 +32,7 @@ text:
 # 画像生成の共通設定（表現方針は各テンプレートで定義）
 image:
   # 1動画で生成するシーン画像の最大枚数
-  max_count: 20
+  max_count: 50
   # シーン画像の生成に使用するモデル
   scene_model: flux-2-pro
   # サムネイル画像の生成に使用する高品質モデル
@@ -65,6 +65,9 @@ image:
     height: 768
     # nullの場合は毎回ランダムなseedを使用し、実際に使用したseedをログ・画像メタデータへ記録する
     seed: null
+    # FLUX.1-schnellは公式サンプルでこの値（256）を用いて蒸留・検証されている。
+    # 超えるとプロンプトが切り捨てられるか、学習時と異なる長さとして扱われ品質が不安定になりうる。
+    max_sequence_length: 256
     enable_cpu_offload: false
     enable_attention_slicing: false
     low_vram_mode: true
@@ -204,7 +207,7 @@ ending:
     enabled: false
   auto_append: true
   min_duration: 5
-  max_duration: 15
+  max_duration: 20
   gap_seconds: 1.0
   # エンディング映像自体の末尾に追加する無音の余白（秒）
   end_padding_seconds: 1.0

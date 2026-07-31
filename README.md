@@ -439,6 +439,9 @@ image:
     width: 1344
     height: 768
     seed: null
+    # FLUX.1-schnellの公式サンプルはこの値(256)で蒸留・検証されている。超えると
+    # プロンプトが切り捨てられるか、学習時と異なる長さとして扱われ品質が不安定になりうる。
+    max_sequence_length: 256
     enable_cpu_offload: false
     enable_attention_slicing: false
     low_vram_mode: false
@@ -462,6 +465,10 @@ CUDAメモリ不足時はエラーに`model_id`・`device`・`dtype`・生成サ
 - 他のGPUプロセスを終了する
 
 複数シーンの同時生成によるVRAM不足を避けるため、既定では逐次生成です。
+
+### プロンプト長について
+
+FLUX.1-schnellは公式サンプルで`max_sequence_length=256`を用いて蒸留・検証されています。これを超えるプロンプトは切り捨てられるか、学習時と異なる長さとして扱われ、顔・体などの構造的な破綻が増える一因になり得ます。`image.flux_schnell_local.max_sequence_length`（既定256）で調整できますが、値を上げても品質が改善するとは限りません。プロンプト生成自体（`ImagePromptBuilder`）はBFL/OpenAIとも共有される、Provider非依存の共通処理のため、Self-host専用には変更していません。
 
 ### CPU実行についての注意
 
