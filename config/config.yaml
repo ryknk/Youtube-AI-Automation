@@ -53,7 +53,13 @@ image:
   # providers.image（またはproviders.image.scene/thumbnail）を flux_schnell_local に
   # した場合のみ使用される。詳細はREADME.mdの「FLUX.1 Schnell Self-host」を参照。
   flux_schnell_local:
+    # VAE/テキストエンコーダ(CLIP L, T5xxl)/tokenizer/schedulerの取得元となるベースモデル。
+    # transformer_pathを指定した場合、transformer本体のみ差し替わりこちらは変わらない。
     model_id: black-forest-labs/FLUX.1-schnell
+    # Civitai等で配布される、transformer(拡散モデル本体)のみを含む単一safetensorsのローカルパス。
+    # nullの場合はmodel_idのtransformerをそのまま使用する。
+    # 例: PixelWave FLUX.1 schnell version 04 (bf16) を使う場合
+    transformer_path: huggingface\checkpoints\pixelwave_flux1Schnell04.safetensors
     # auto: CUDA検出時はcuda、未検出時はallow_cpu次第でcpu / cuda / cpu / mps を明示指定も可
     device: auto
     # auto: cuda時はbfloat16、cpu時はfloat32 / float16 / bfloat16 / float32 も指定可

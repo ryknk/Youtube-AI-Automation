@@ -55,6 +55,12 @@ def _run_local_check(flux_settings: FluxSchnellLocalSettings, image_values: dict
     """画像を生成せず、APIも呼ばずに実行環境のみを確認する。"""
     print("=== FLUX.1 Schnell Self-host 環境確認 ===")
     print(f"model_id: {flux_settings.model_id}")
+    if flux_settings.transformer_path:
+        transformer_file = Path(flux_settings.transformer_path)
+        if transformer_file.is_file():
+            print(f"[OK] transformer_path を検出しました: {transformer_file}")
+        else:
+            print(f"[NG] transformer_path が見つかりません: {transformer_file}")
     print(f"設定device: {flux_settings.device} / 設定dtype: {flux_settings.dtype}")
     print(f"allow_cpu: {flux_settings.allow_cpu}")
     print(f"scene_size: {image_values.get('scene_size')} / thumbnail_size: {image_values.get('thumbnail_size')}")

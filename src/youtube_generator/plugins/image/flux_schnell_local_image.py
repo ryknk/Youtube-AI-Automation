@@ -50,6 +50,10 @@ class FluxSchnellLocalSettings:
     allow_cpu: bool = False
     fallback_provider: str | None = None
     negative_prompt: str | None = None
+    # Civitai等で配布される、transformer(拡散モデル本体)のみを含む単一safetensorsの
+    # ローカルパス。指定時はこのtransformerのみを差し替え、VAE/テキストエンコーダ/
+    # tokenizer/schedulerはmodel_idのベースモデルからそのまま利用する。
+    transformer_path: str | None = None
 
     @classmethod
     def from_mapping(cls, values: dict[str, Any]) -> "FluxSchnellLocalSettings":
@@ -65,6 +69,7 @@ class FluxSchnellLocalSettings:
             fallback_provider = values.get("fallback_provider")
             negative_prompt = values.get("negative_prompt")
             model_cache_dir = values.get("model_cache_dir")
+            transformer_path = values.get("transformer_path")
             return cls(
                 model_id=str(values.get("model_id", DEFAULT_MODEL_ID)),
                 device=device,
@@ -82,6 +87,7 @@ class FluxSchnellLocalSettings:
                 allow_cpu=bool(values.get("allow_cpu", False)),
                 fallback_provider=str(fallback_provider).lower() if fallback_provider else None,
                 negative_prompt=str(negative_prompt) if negative_prompt else None,
+                transformer_path=str(transformer_path) if transformer_path else None,
             )
         except (TypeError, ValueError) as error:
             raise ValueError(f"config.yaml の image.flux_schnell_local 設定が不正です: {error}") from error
@@ -170,14 +176,26 @@ class FluxSchnellLocalImageProvider(ImageProvider):
         device = self._resolve_device(torch)
         dtype = self._resolve_dtype(torch, device)
         self._logger.info(
-            "FLUXローカルモデルをロードします: model_id=%s, device=%s, dtype=%s, cache_dir=%s",
+            "FLUXローカルモデルをロードします: model_id=%s, device=%s, dtype=%s, cache_dir=%s, transformer_path=%s",
             self._settings.model_id, device, dtype, self._settings.model_cache_dir or "(既定のHFキャッシュ)",
+            self._settings.transformer_path or "(ベースモデルのtransformerを使用)",
         )
         started_at = time.perf_counter()
         try:
-            pipeline = diffusers.FluxPipeline.from_pretrained(
-                self._settings.model_id, torch_dtype=dtype, cache_dir=self._settings.model_cache_dir,
-            )
+            if self._settings.transformer_path:
+                # Civitai等で配布される単一safetensors（transformerのみ）を読み込み、
+                # VAE/テキストエンコーダ/tokenizer/schedulerはmodel_idのベースモデルから流用する。
+                transformer = diffusers.FluxTransformer2DModel.from_single_file(
+                    self._settings.transformer_path, torch_dtype=dtype,
+                )
+                pipeline = diffusers.FluxPipeline.from_pretrained(
+                    self._settings.model_id, transformer=transformer, torch_dtype=dtype,
+                    cache_dir=self._settings.model_cache_dir,
+                )
+            else:
+                pipeline = diffusers.FluxPipeline.from_pretrained(
+                    self._settings.model_id, torch_dtype=dtype, cache_dir=self._settings.model_cache_dir,
+                )
         except Exception as error:  # huggingface_hub/diffusers側の例外は多様なため広く捕捉する
             raise self._wrap_load_error(error) from error
 
@@ -258,6 +276,8 @@ class FluxSchnellLocalImageProvider(ImageProvider):
         """再現性のため、使用seedなどをPNGメタデータへ埋め込んで保存する。"""
         metadata = PngInfo()
         metadata.add_text("flux_schnell_local:model_id", self._settings.model_id)
+        if self._settings.transformer_path:
+            metadata.add_text("flux_schnell_local:transformer_path", self._settings.transformer_path)
         metadata.add_text("flux_schnell_local:seed", str(seed))
         metadata.add_text("flux_schnell_local:num_inference_steps", str(self._settings.num_inference_steps))
         metadata.add_text("flux_schnell_local:guidance_scale", str(self._settings.guidance_scale))
@@ -267,9 +287,19 @@ class FluxSchnellLocalImageProvider(ImageProvider):
 
     def _wrap_load_error(self, error: Exception) -> ImageGenerationError:
         self._logger.exception(
-            "FLUXローカルモデルのロードに失敗しました: model_id=%s, cache_dir=%s",
+            "FLUXローカルモデルのロードに失敗しました: model_id=%s, cache_dir=%s, transformer_path=%s",
             self._settings.model_id, self._settings.model_cache_dir or "(既定のHFキャッシュ)",
+            self._settings.transformer_path or "(ベースモデルのtransformerを使用)",
         )
+        if self._settings.transformer_path:
+            return ImageGenerationError(
+                f"FLUXローカルモデルのロードに失敗しました。transformer_path={self._settings.transformer_path}, "
+                f"model_id={self._settings.model_id}（VAE/テキストエンコーダ用のベースモデル), "
+                f"cache_dir={self._settings.model_cache_dir or '(既定のHFキャッシュ)'}。"
+                "transformer_pathのファイルパス・破損の有無、diffusers/transformersのバージョンが"
+                "single-file読み込み（FluxTransformer2DModel.from_single_file）に対応しているか、"
+                "ベースモデル側のダウンロード状況を確認してください。詳細: {error}".format(error=error)
+            )
         return ImageGenerationError(
             f"FLUXローカルモデルのロードに失敗しました。model_id={self._settings.model_id}, "
             f"cache_dir={self._settings.model_cache_dir or '(既定のHFキャッシュ)'}。"

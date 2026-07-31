@@ -452,6 +452,26 @@ image:
 
 `providers.image`は従来どおり単一の文字列（例: `image: bfl`）でも指定でき、その場合はシーン・サムネイル両方に同じプロバイダーが使われます（後方互換）。
 
+### Civitai等の単一ファイルモデル（transformer_path）を使う方法
+
+Civitaiで配布されているFLUX.1 Schnellベースのマージ/ファインチューンモデル（例: PixelWave）は、多くの場合**transformer（拡散モデル本体）のみ**を含む単一safetensorsファイルとして配布されており、VAE・テキストエンコーダ(CLIP L, T5xxl)・tokenizer・schedulerは含まれません。これらは`model_id`のベースモデル（既定は`black-forest-labs/FLUX.1-schnell`）からそのまま流用されます。
+
+1. ダウンロードしたsafetensorsファイルをプロジェクト内の`huggingface\checkpoints\`へ配置する（`huggingface\model_cache`と同様に`.gitignore`の`huggingface/*`で除外済み）。
+2. `image.flux_schnell_local.transformer_path`にそのファイルパスを指定する。
+
+```yaml
+image:
+  flux_schnell_local:
+    model_id: black-forest-labs/FLUX.1-schnell
+    transformer_path: huggingface\checkpoints\pixelwave_flux1Schnell04.safetensors
+```
+
+`transformer_path`が未指定（`null`）の場合は、従来どおり`model_id`のtransformerがそのまま使われます。
+
+- `transformer_path`使用時も`model_id`のベースモデル（VAE/テキストエンコーダ用）は初回ダウンロードが必要です。事前に`.\run.cmd image local-check`でベースモデルのキャッシュ状況を確認できます。
+- 単一ファイル読み込み（`FluxTransformer2DModel.from_single_file`）には対応バージョンの`diffusers`が必要です。読み込みに失敗する場合は`requirements-flux-local.txt`のバージョンを最新化してください。
+- モデルごとに推奨`num_inference_steps`が異なります（PixelWaveは公式に「Euler Normal, 8 steps」を推奨）。配布元の推奨設定に合わせて`image.flux_schnell_local.num_inference_steps`を調整してください。
+
 ### シーンだけSelf-host、サムネイルはBFLのまま、にする方法
 
 `providers.image`を上記のように辞書形式にし、`scene`だけ`flux_schnell_local`、`thumbnail`は`bfl`（または`openai`）を指定してください。サムネイル生成は従来のBFL/OpenAI Providerのフローのまま変わりません。

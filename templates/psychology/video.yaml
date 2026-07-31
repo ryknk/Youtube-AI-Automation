@@ -15,7 +15,7 @@ subtitles:
   bottom_margin: 20
   box_enabled: true
   background_color: "#000000"
-  background_opacity: 0.6
+  background_opacity: 0.8
 bgm:
   enabled: true
   render_mode: per_section

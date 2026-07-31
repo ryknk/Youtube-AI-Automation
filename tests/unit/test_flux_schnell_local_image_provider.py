@@ -100,17 +100,41 @@ class FakeFluxPipelineClass:
         self._pipeline = pipeline
         self._load_error = load_error
         self.from_pretrained_calls = 0
+        self.from_pretrained_kwargs: list[dict] = []
 
-    def from_pretrained(self, model_id: str, torch_dtype=None, cache_dir=None):  # type: ignore[no-untyped-def]
+    def from_pretrained(self, model_id: str, torch_dtype=None, cache_dir=None, transformer=None):  # type: ignore[no-untyped-def]
         self.from_pretrained_calls += 1
+        self.from_pretrained_kwargs.append({
+            "model_id": model_id, "torch_dtype": torch_dtype, "cache_dir": cache_dir, "transformer": transformer,
+        })
         if self._load_error is not None:
             raise self._load_error
         return self._pipeline
 
 
+class FakeTransformer:
+    pass
+
+
+class FakeFluxTransformer2DModelClass:
+    def __init__(self, transformer: "FakeTransformer", load_error: Exception | None = None) -> None:
+        self._transformer = transformer
+        self._load_error = load_error
+        self.from_single_file_calls: list[dict] = []
+
+    def from_single_file(self, pretrained_model_link_or_path: str, torch_dtype=None):  # type: ignore[no-untyped-def]
+        self.from_single_file_calls.append({
+            "path": pretrained_model_link_or_path, "torch_dtype": torch_dtype,
+        })
+        if self._load_error is not None:
+            raise self._load_error
+        return self._transformer
+
+
 class FakeDiffusers:
     def __init__(self, pipeline: FakePipeline, load_error: Exception | None = None) -> None:
         self.FluxPipeline = FakeFluxPipelineClass(pipeline, load_error)
+        self.FluxTransformer2DModel = FakeFluxTransformer2DModelClass(FakeTransformer())
 
 
 def _patched_provider(
@@ -131,6 +155,7 @@ class FluxSchnellLocalSettingsTests(unittest.TestCase):
         self.assertIsNone(settings.seed)
         self.assertIsNone(settings.fallback_provider)
         self.assertFalse(settings.allow_cpu)
+        self.assertIsNone(settings.transformer_path)
 
     def test_from_mapping_reads_all_fields(self) -> None:
         settings = FluxSchnellLocalSettings.from_mapping({
@@ -139,6 +164,7 @@ class FluxSchnellLocalSettingsTests(unittest.TestCase):
             "seed": 42, "enable_cpu_offload": True, "enable_attention_slicing": True,
             "low_vram_mode": True, "model_cache_dir": "/tmp/cache", "allow_cpu": True,
             "fallback_provider": "BFL", "negative_prompt": "blurry",
+            "transformer_path": "huggingface/checkpoints/pixelwave_flux1_schnell_v04_bf16.safetensors",
         })
 
         self.assertEqual(settings.model_id, "org/model")
@@ -148,6 +174,9 @@ class FluxSchnellLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.fallback_provider, "bfl")
         self.assertEqual(settings.negative_prompt, "blurry")
         self.assertTrue(settings.allow_cpu)
+        self.assertEqual(
+            settings.transformer_path, "huggingface/checkpoints/pixelwave_flux1_schnell_v04_bf16.safetensors",
+        )
 
     def test_from_mapping_rejects_invalid_device(self) -> None:
         with self.assertRaises(ValueError):
@@ -232,6 +261,58 @@ class FluxSchnellLocalImageProviderTests(unittest.TestCase):
 
         with Image.open(self.output_file) as saved_image:
             self.assertEqual(saved_image.text.get("flux_schnell_local:seed"), "123")
+
+    def test_transformer_path_loads_single_file_transformer_and_reuses_base_pipeline(self) -> None:
+        transformer_path = "huggingface/checkpoints/pixelwave_flux1_schnell_v04_bf16.safetensors"
+        settings = FluxSchnellLocalSettings.from_mapping({
+            "seed": 123, "allow_cpu": True, "width": 800, "height": 600,
+            "transformer_path": transformer_path,
+        })
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        fake_transformer = FakeTransformer()
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        diffusers_module.FluxTransformer2DModel = FakeFluxTransformer2DModelClass(fake_transformer)
+        provider = FluxSchnellLocalImageProvider(settings, "640x360")
+
+        with patch.object(FluxSchnellLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(FluxSchnellLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("a calm landscape", self.output_file)
+
+        self.assertEqual(len(diffusers_module.FluxTransformer2DModel.from_single_file_calls), 1)
+        self.assertEqual(
+            diffusers_module.FluxTransformer2DModel.from_single_file_calls[0]["path"], transformer_path,
+        )
+        self.assertEqual(diffusers_module.FluxPipeline.from_pretrained_calls, 1)
+        pretrained_call = diffusers_module.FluxPipeline.from_pretrained_kwargs[0]
+        self.assertIs(pretrained_call["transformer"], fake_transformer)
+        self.assertEqual(pretrained_call["model_id"], settings.model_id)
+
+        with Image.open(self.output_file) as saved_image:
+            self.assertEqual(saved_image.text.get("flux_schnell_local:transformer_path"), transformer_path)
+
+    def test_transformer_path_load_failure_raises_descriptive_error(self) -> None:
+        transformer_path = "huggingface/checkpoints/missing.safetensors"
+        settings = FluxSchnellLocalSettings.from_mapping({
+            "allow_cpu": True, "transformer_path": transformer_path,
+        })
+        pipeline = FakePipeline(Image.new("RGB", (800, 600)))
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        diffusers_module.FluxTransformer2DModel = FakeFluxTransformer2DModelClass(
+            FakeTransformer(), load_error=OSError("file not found"),
+        )
+        provider = FluxSchnellLocalImageProvider(settings, "640x360")
+
+        with patch.object(FluxSchnellLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(FluxSchnellLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            with self.assertRaises(ImageGenerationError) as context:
+                provider.generate_image("prompt", self.output_file)
+
+        message = str(context.exception)
+        self.assertIn(transformer_path, message)
+        self.assertIn("file not found", message)
 
     def test_pipeline_is_lazily_loaded_and_reused_across_calls(self) -> None:
         source_image = Image.new("RGB", (800, 600), color="yellow")
