@@ -116,7 +116,7 @@ class JobManager:
 
     def list(self) -> tuple[Job, ...]:
         with self._connect() as connection:
-            rows = connection.execute("SELECT * FROM jobs ORDER BY created_at, job_id").fetchall()
+            rows = connection.execute("SELECT * FROM jobs ORDER BY created_at, rowid").fetchall()
         return tuple(self._from_row(row) for row in rows)
 
     def get(self, job_id: str) -> Job:
@@ -207,7 +207,7 @@ class JobManager:
 
     def _next_pending(self) -> Job | None:
         with self._connect() as connection:
-            row = connection.execute("SELECT * FROM jobs WHERE status=? ORDER BY created_at, job_id LIMIT 1", (JobStatus.PENDING.value,)).fetchone()
+            row = connection.execute("SELECT * FROM jobs WHERE status=? ORDER BY created_at, rowid LIMIT 1", (JobStatus.PENDING.value,)).fetchone()
         return self._from_row(row) if row else None
 
     def _update(self, job_id: str, **values: object) -> None:
