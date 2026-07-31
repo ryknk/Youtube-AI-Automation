@@ -136,6 +136,39 @@ class ImageCacheKeyScopingTests(unittest.TestCase):
         )
         self.assertNotEqual(before, after)
 
+    def test_provider_change_from_bfl_to_qwen_image_local_invalidates_scene_key(self) -> None:
+        settings = {"scene_model": "flux-2-pro", "qwen_image_local": {"model_id": "Qwen/Qwen-Image"}}
+        before = _scene_image_fingerprint("bfl", settings, "style")
+        after = _scene_image_fingerprint("qwen_image_local", settings, "style")
+        self.assertNotEqual(before, after)
+
+    def test_qwen_image_local_settings_change_invalidates_scene_key(self) -> None:
+        before = _scene_image_fingerprint(
+            "qwen_image_local", {"qwen_image_local": {"seed": 1, "num_inference_steps": 50}}, "style",
+        )
+        after = _scene_image_fingerprint(
+            "qwen_image_local", {"qwen_image_local": {"seed": 2, "num_inference_steps": 50}}, "style",
+        )
+        self.assertNotEqual(before, after)
+
+    def test_provider_change_from_bfl_to_qwen_image_nunchaku_local_invalidates_scene_key(self) -> None:
+        settings = {
+            "scene_model": "flux-2-pro",
+            "qwen_image_nunchaku_local": {"base_model_id": "Qwen/Qwen-Image"},
+        }
+        before = _scene_image_fingerprint("bfl", settings, "style")
+        after = _scene_image_fingerprint("qwen_image_nunchaku_local", settings, "style")
+        self.assertNotEqual(before, after)
+
+    def test_qwen_image_nunchaku_local_settings_change_invalidates_scene_key(self) -> None:
+        before = _scene_image_fingerprint(
+            "qwen_image_nunchaku_local", {"qwen_image_nunchaku_local": {"seed": 1, "rank": 32}}, "style",
+        )
+        after = _scene_image_fingerprint(
+            "qwen_image_nunchaku_local", {"qwen_image_nunchaku_local": {"seed": 2, "rank": 32}}, "style",
+        )
+        self.assertNotEqual(before, after)
+
 
 class SubtitleCacheKeyScopingTests(unittest.TestCase):
     def test_alignment_provider_settings_invalidate_key(self) -> None:

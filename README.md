@@ -506,6 +506,183 @@ GPU（CUDA）が検出できない場合、既定では停止し、原因が分�
 
 FLUX.1 Schnellのライセンス・利用条件はこのドキュメントでは判断しません。公開・収益化する動画に使用する前に、必ず[Hugging Face上の公式モデルカード](https://huggingface.co/black-forest-labs/FLUX.1-schnell)で最新のライセンス内容をご自身で確認してください。
 
+## Qwen-Image Self-host（ローカルGPU画像生成）
+
+シーン画像をAPIではなくローカルGPU（Hugging Face Diffusers + Qwen-Image）で生成し、画像API費用を削減できます。サムネイルは従来どおりBFL/OpenAIのままにできます。仕組み・設定構造はFLUX.1 Schnell Self-hostと同様です。
+
+### 概要
+
+- 追加されるプロバイダー: `qwen_image_local`（`QwenImageLocalImageProvider`）
+- モデルは既定で`Qwen/Qwen-Image`（`image.qwen_image_local.model_id`で変更可）
+- APIキーは不要。モデルは1ジョブ内で遅延ロード・再利用され、画像ごとに再ロードしない
+- 約20Bパラメータと大きいモデルのため、FLUX.1 Schnellよりも多くのVRAMを必要とする
+- 既定ではAPIへの自動フォールバックは無効（`fallback_provider: null`）。意図しないAPI課金を避けるため、明示設定した場合のみBFL/OpenAIへ切り替わる
+
+### 任意依存関係のインストール
+
+```powershell
+python -m pip install -r requirements-qwen-image-local.txt
+```
+
+または
+
+```powershell
+python -m pip install -e ".[qwen-image-local]"
+```
+
+torchはお使いのGPU/CUDAバージョンに対応したビルドが必要な場合があります。事前に[PyTorch公式サイト](https://pytorch.org/get-started/locally/)でご自身の環境に合ったインストールコマンドを確認してください。Qwen-Imageのモデルカードは最新版のdiffusersを推奨しています。モデルロードに失敗する場合は`pip install -U diffusers`を試してください。
+
+### モデルの初回ダウンロード
+
+初回生成時に、Hugging Faceから`model_id`のモデルが自動ダウンロードされ、既定では`%USERPROFILE%\.cache\huggingface\hub`へキャッシュされます。保存先を変更する場合は`image.qwen_image_local.model_cache_dir`を指定してください。以降はダウンロード済みモデルが再利用されます。
+
+### 設定例
+
+```yaml
+providers:
+  image:
+    scene: qwen_image_local
+    thumbnail: bfl
+
+image:
+  scene_size: 1920x1080
+  thumbnail_size: 1280x720
+  qwen_image_local:
+    model_id: Qwen/Qwen-Image
+    device: auto
+    dtype: auto
+    # 公式サンプルはnum_inference_steps=50, true_cfg_scale=4.0を使用
+    num_inference_steps: 50
+    true_cfg_scale: 4.0
+    width: 1664
+    height: 928
+    seed: null
+    negative_prompt: ""
+    enable_cpu_offload: false
+    enable_attention_slicing: false
+    low_vram_mode: false
+    model_cache_dir: null
+    allow_cpu: false
+    fallback_provider: null
+```
+
+`providers.image`は従来どおり単一の文字列（例: `image: bfl`）でも指定でき、その場合はシーン・サムネイル両方に同じプロバイダーが使われます（後方互換）。シーンだけSelf-host、サムネイルはBFL/OpenAIのまま、にする方法もFLUX.1 Schnell Self-hostと同様です（`providers.image`を辞書形式にし、`scene`だけ`qwen_image_local`を指定）。
+
+### VRAM不足時の対処
+
+CUDAメモリ不足時はエラーに`model_id`・`device`・`dtype`・生成サイズ・`cuda_oom=True`と対処法が表示されます。対策例:
+
+- Self-host生成サイズ（`width`/`height`）や`num_inference_steps`を下げる
+- `enable_cpu_offload: true`または`low_vram_mode: true`を有効化する
+- 他のGPUプロセスを終了する
+
+複数シーンの同時生成によるVRAM不足を避けるため、既定では逐次生成です。
+
+### CPU実行についての注意
+
+GPU（CUDA）が検出できない場合、既定では停止し、原因が分かるエラーを表示します（意図せず長時間のCPU実行が始まったように見えることを防ぐため）。CPU実行を許可する場合は、`image.qwen_image_local.allow_cpu: true`を明示してください。20Bパラメータのモデルのため、CPU実行は極めて低速です。
+
+### APIへの自動フォールバックについて
+
+`fallback_provider`は既定で`null`（無効）です。Self-host生成が失敗しても、明示的に`fallback_provider: bfl`のように設定しない限り、BFL/OpenAI APIは呼び出されず、API課金は発生しません。
+
+### ライセンスの確認
+
+Qwen-Imageのライセンス・利用条件はこのドキュメントでは判断しません。公開・収益化する動画に使用する前に、必ず[Hugging Face上の公式モデルカード](https://huggingface.co/Qwen/Qwen-Image)で最新のライセンス内容をご自身で確認してください（モデルカード記載時点ではApache 2.0）。
+
+## Qwen-Image nunchaku Self-host（4bit量子化・省VRAM）
+
+[nunchaku](https://github.com/nunchaku-tech/nunchaku)（SVDQuant）による4bit量子化版Qwen-Imageをローカル実行するプロバイダーです。通常のQwen-Image Self-host（bf16、約20Bパラメータ分のVRAMが必要）に比べてVRAM使用量を大幅に削減でき、VRAMが少ないGPUでもCPUオフロードなし、または軽いオフロードだけで動作させられる可能性があります。
+
+### 概要
+
+- 追加されるプロバイダー: `qwen_image_nunchaku_local`（`QwenImageNunchakuLocalImageProvider`）
+- ベースパイプラインは`Qwen/Qwen-Image`、transformer（拡散モデル本体）のみ`nunchaku-tech/nunchaku-qwen-image`の4bit量子化版に差し替える
+- **CUDA専用**。nunchakuの量子化推論カーネルはCUDA向けのため、CPU実行には対応しない
+- GPU VRAM量に応じて自動的にオフロード方式を切り替える（`image.qwen_image_nunchaku_local.offload_threshold_gb`、既定18GB）。しきい値超過時は`enable_model_cpu_offload`、以下では`transformer.set_offload`+`enable_sequential_cpu_offload`を使用
+- 既定ではAPIへの自動フォールバックは無効（`fallback_provider: null`）
+
+### nunchakuのインストール（重要・手動作業が必要）
+
+torch/diffusers等とは異なり、`nunchaku`本体は通常の`pip install nunchaku`では導入できません。[nunchakuのリリースページ](https://github.com/nunchaku-tech/nunchaku/releases)から、お使いの**Pythonバージョン・PyTorchバージョン・CUDAバージョン**に対応するプリビルドwheelを選び、直接インストールしてください。
+
+```powershell
+python -m pip install -r requirements-qwen-image-nunchaku-local.txt
+python -m pip install https://github.com/nunchaku-tech/nunchaku/releases/download/vX.Y.Z/nunchaku-X.Y.Z+cu12.8torch2.11-cp312-cp312-win_amd64.whl
+```
+
+（`vX.Y.Z`とwheelファイル名は実際のリリースページで確認したものに置き換えてください）
+
+**動作確認済みの落とし穴（重要）**: `nunchaku`は`torchvision>=0.20`を必須依存として要求しますが、`pip install nunchaku-*.whl`だけを実行すると、torchのビルド（例: `+cu128`）と対応しない`torchvision`が自動インストールされ、`RuntimeError: operator torchvision::nms does not exist`のようなABI不一致エラーでnunchakuのimportに失敗することを確認しています。この場合は、[PyTorchのtorch/torchvision対応表](https://github.com/pytorch/vision#installation)で自分のtorchバージョンに対応する`torchvision`バージョンを確認し、torchと同じCUDAインデックスから明示的に入れ直してください。
+
+```powershell
+python -m pip install "torchvision==<対応バージョン>" --index-url https://download.pytorch.org/whl/cu128
+```
+
+また、`import torchaudio`（stable-tsの依存関係）が`Could not load this library: ...\torchaudio\lib\libtorchaudio.pyd`のようなDLLロードエラーを起こす場合は、torch/torchaudioを同じインデックスから揃えて強制再インストールすると解消することを確認しています。
+
+```powershell
+python -m pip install torch==<バージョン> torchaudio==<バージョン> --index-url https://download.pytorch.org/whl/cu128 --force-reinstall --no-deps
+```
+
+さらに、`diffusers`は**0.36.0に固定**してください（`requirements-qwen-image-nunchaku-local.txt`で指定済み）。nunchaku 1.2.1は`diffusers>=0.36`を要求しますが、より新しいバージョン（0.39.0で確認）では`TypeError: QwenEmbedRope.forward() got multiple values for argument 'device'`という非互換エラーで画像生成に失敗することを確認しています。nunchaku自体のCI extraも`diffusers==0.36`を明示的にピン留めしています。
+
+**重要な制約**: 2026-08-01時点で、nunchakuのプリビルドwheelは **Python 3.10〜3.13向けのみ** 配布されています。プロジェクトの`.venv`がPython 3.14以降の場合、そのままでは`nunchaku`をインストールできません。この場合は以下のいずれかが必要です。
+
+- Python 3.10〜3.13で別の仮想環境を用意し、そちらでnunchaku版プロバイダーを動かす
+- nunchakuをソースからビルドする（CUDA Toolkit・C++コンパイラ等が別途必要。手順は本プロジェクトでは未検証）
+
+`.\run.cmd image local-check`を実行すると、現在のPythonバージョンがnunchakuのプリビルドwheel対応範囲内かどうかを含めて確認できます。
+
+### 設定例
+
+```yaml
+providers:
+  image:
+    scene: qwen_image_nunchaku_local
+    thumbnail: bfl
+
+image:
+  scene_size: 1920x1080
+  thumbnail_size: 1280x720
+  qwen_image_nunchaku_local:
+    base_model_id: Qwen/Qwen-Image
+    transformer_repo_id: nunchaku-tech/nunchaku-qwen-image
+    # auto: GPU世代から自動判定（Blackwell/50シリーズはnvfp4、それ以外はint4）
+    precision: auto
+    # 32: 高速（軽量） / 128: 高品質（重い）
+    rank: 32
+    offload_threshold_gb: 18.0
+    # 低VRAM時（offload_threshold_gb以下）のtransformer.set_offload()に渡すパラメータ。
+    # 公式サンプルの既定値。use_pin_memory: trueにすると環境によってはpin_memory()確保時に
+    # CUDAメモリ不足で失敗することがある（実際に確認済み）。
+    low_vram_use_pin_memory: false
+    low_vram_num_blocks_on_gpu: 1
+    num_inference_steps: 50
+    true_cfg_scale: 4.0
+    width: 1664
+    height: 928
+    seed: null
+    negative_prompt: ""
+    model_cache_dir: null
+    fallback_provider: null
+```
+
+### 生成速度・VRAMについて
+
+具体的な倍率はnunchaku公式ドキュメントに記載がありませんが、以下の環境で実測しました。
+
+- GPU: NVIDIA GeForce RTX 4070（VRAM 12GB、`offload_threshold_gb`未満のためsequential offload経路）
+- 設定: `precision: auto`（int4に自動判定）、`rank: 32`、`num_inference_steps: 50`、`true_cfg_scale: 4.0`、`1664x928`
+- モデルロード: 約13秒（初回ダウンロード除く）
+- 画像生成: 約198秒（約3分18秒）/ 1枚
+
+`rank`（32/128）や`offload_threshold_gb`、VRAMに余裕がある環境での`enable_model_cpu_offload`経路（18GB超）では結果が変わります。お使いの環境で実際の生成時間・VRAM使用量を確認してください。
+
+### ライセンスの確認
+
+nunchaku（SVDQuant）およびQwen-Imageのライセンス・利用条件はこのドキュメントでは判断しません。公開・収益化する動画に使用する前に、必ず[nunchaku-qwen-imageのモデルカード](https://huggingface.co/nunchaku-ai/nunchaku-qwen-image)と[Qwen-Imageの公式モデルカード](https://huggingface.co/Qwen/Qwen-Image)で最新のライセンス内容をご自身で確認してください。
+
 ## テスト
 
 ```powershell

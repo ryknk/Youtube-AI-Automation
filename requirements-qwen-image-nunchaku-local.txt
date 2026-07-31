@@ -1,0 +1,29 @@
+# Qwen-Image nunchaku(SVDQuant 4bit量子化)版 Self-host（ローカルGPU画像生成）専用の
+# 任意依存関係。通常利用（BFL/OpenAI画像プロバイダーのみ使用）では不要。
+#
+# nunchakuは通常のpip install nunchakuでは導入できない。
+# torch/CUDA/Pythonバージョンに対応したプリビルドwheelを
+# https://github.com/nunchaku-tech/nunchaku/releases から選び、
+# 以下のように直接インストールすること（例はtorch2.11 + CUDA12.8 + Python3.12 + Windows向け）。
+#   python -m pip install https://github.com/nunchaku-tech/nunchaku/releases/download/vX.Y.Z/nunchaku-X.Y.Z+cu12.8torch2.11-cp312-cp312-win_amd64.whl
+#
+# 2026-08-01時点でnunchakuのプリビルドwheelはPython 3.10〜3.13向けのみ配布されている。
+# Python 3.14環境では別途Python 3.10〜3.13の仮想環境を用意するか、ソースからのビルドが必要。
+#
+# nunchakuはtorchvision>=0.20も要求する。torchのビルド（+cu128等）と対応しない
+# torchvisionが入るとimport時にRuntimeError: operator torchvision::nms does not existの
+# ようなABI不一致エラーになるため、torchvisionもtorchと同じCUDAインデックスから
+# 対応バージョン（https://github.com/pytorch/vision#installation の対応表参照）で
+# 明示的にインストールすること。詳細はREADME.mdの「Qwen-Image nunchaku Self-host」を参照。
+#
+# 動作確認済み: diffusersは0.36.0に固定すること。nunchaku 1.2.1はdiffusers>=0.36を
+# 要求するが、より新しいdiffusers（0.39.0で確認）では
+# 「TypeError: QwenEmbedRope.forward() got multiple values for argument 'device'」
+# のような非互換エラーが発生した。nunchaku側のci extraがdiffusers==0.36を
+# 明示的にピン留めしていることからも、この組み合わせが安全。
+-r requirements.txt
+torch>=2.2
+diffusers==0.36.0
+transformers>=4.40
+accelerate>=0.30
+safetensors>=0.4

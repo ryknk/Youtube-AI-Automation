@@ -192,3 +192,107 @@ class PluginManagerTests(unittest.TestCase):
         provider = manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
 
         self.assertIsInstance(provider, FluxSchnellLocalImageProvider)
+
+    @patch("youtube_generator.plugins.manager.QwenImageLocalImageProvider")
+    def test_qwen_image_local_provider_created_for_scene(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(), {"image": "qwen_image_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080", "thumbnail_size": "1280x720",
+            "qwen_image_local": {"model_id": "org/model", "seed": 7},
+        }
+
+        manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        args = provider_class.call_args.args
+        self.assertEqual(args[0].model_id, "org/model")
+        self.assertEqual(args[0].seed, 7)
+        self.assertEqual(args[1], "1920x1080")
+
+    @patch("youtube_generator.plugins.manager.BFLImageProvider")
+    @patch("youtube_generator.plugins.manager.QwenImageLocalImageProvider")
+    def test_fallback_provider_wraps_qwen_image_local_primary_with_bfl(self, qwen_provider_class, bfl_provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(
+            Settings(bfl_api_key="test-key"), {"image": "qwen_image_local"}, {},
+        )
+        image_settings = {
+            "scene_size": "1920x1080", "scene_model": "flux-2-pro",
+            "qwen_image_local": {"fallback_provider": "bfl"},
+        }
+
+        from youtube_generator.plugins.image.image_provider_fallback import FallbackImageProvider
+        provider = manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertIsInstance(provider, FallbackImageProvider)
+        qwen_provider_class.assert_called_once()
+        bfl_provider_class.assert_called_once()
+
+    def test_fallback_provider_rejects_qwen_image_local_itself(self) -> None:
+        manager = PluginManager(Settings(), {"image": "qwen_image_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080",
+            "qwen_image_local": {"fallback_provider": "qwen_image_local"},
+        }
+
+        with self.assertRaisesRegex(ValueError, "fallback_provider"):
+            manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+    def test_qwen_image_local_without_fallback_returns_primary_directly(self) -> None:
+        manager = PluginManager(Settings(), {"image": "qwen_image_local"}, {})
+        image_settings = {"scene_size": "1920x1080", "qwen_image_local": {}}
+
+        from youtube_generator.plugins.image.qwen_image_local import QwenImageLocalImageProvider
+        provider = manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertIsInstance(provider, QwenImageLocalImageProvider)
+
+    @patch("youtube_generator.plugins.manager.QwenImageNunchakuLocalImageProvider")
+    def test_qwen_image_nunchaku_local_provider_created_for_scene(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(), {"image": "qwen_image_nunchaku_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080", "thumbnail_size": "1280x720",
+            "qwen_image_nunchaku_local": {"rank": 128, "seed": 7},
+        }
+
+        manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        args = provider_class.call_args.args
+        self.assertEqual(args[0].rank, 128)
+        self.assertEqual(args[0].seed, 7)
+        self.assertEqual(args[1], "1920x1080")
+
+    @patch("youtube_generator.plugins.manager.BFLImageProvider")
+    @patch("youtube_generator.plugins.manager.QwenImageNunchakuLocalImageProvider")
+    def test_fallback_provider_wraps_qwen_image_nunchaku_local_primary_with_bfl(self, nunchaku_provider_class, bfl_provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(
+            Settings(bfl_api_key="test-key"), {"image": "qwen_image_nunchaku_local"}, {},
+        )
+        image_settings = {
+            "scene_size": "1920x1080", "scene_model": "flux-2-pro",
+            "qwen_image_nunchaku_local": {"fallback_provider": "bfl"},
+        }
+
+        from youtube_generator.plugins.image.image_provider_fallback import FallbackImageProvider
+        provider = manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertIsInstance(provider, FallbackImageProvider)
+        nunchaku_provider_class.assert_called_once()
+        bfl_provider_class.assert_called_once()
+
+    def test_fallback_provider_rejects_qwen_image_nunchaku_local_itself(self) -> None:
+        manager = PluginManager(Settings(), {"image": "qwen_image_nunchaku_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080",
+            "qwen_image_nunchaku_local": {"fallback_provider": "qwen_image_nunchaku_local"},
+        }
+
+        with self.assertRaisesRegex(ValueError, "fallback_provider"):
+            manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+    def test_qwen_image_nunchaku_local_without_fallback_returns_primary_directly(self) -> None:
+        manager = PluginManager(Settings(), {"image": "qwen_image_nunchaku_local"}, {})
+        image_settings = {"scene_size": "1920x1080", "qwen_image_nunchaku_local": {}}
+
+        from youtube_generator.plugins.image.qwen_image_nunchaku_local import QwenImageNunchakuLocalImageProvider
+        provider = manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertIsInstance(provider, QwenImageNunchakuLocalImageProvider)

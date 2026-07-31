@@ -1,0 +1,12 @@
+# Qwen-Image Self-host（ローカルGPU画像生成）専用の任意依存関係。
+# 通常利用（BFL/OpenAI画像プロバイダーのみ使用）では不要。
+# インストール前に、お使いのPython/CUDA/PyTorchの組み合わせに対応した
+# インデックスURL（https://pytorch.org/get-started/locally/）を確認してください。
+# Qwen-ImageのモデルカードはGitHub最新版のdiffusersを推奨している。
+# ロードに失敗する場合は `pip install -U diffusers` を試すこと。
+-r requirements.txt
+torch>=2.2
+diffusers>=0.30
+transformers>=4.40
+accelerate>=0.30
+safetensors>=0.4

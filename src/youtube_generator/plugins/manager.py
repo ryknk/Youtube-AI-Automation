@@ -16,6 +16,14 @@ from youtube_generator.plugins.image.flux_schnell_local_image import (
     FluxSchnellLocalSettings,
 )
 from youtube_generator.plugins.image.image_provider_fallback import FallbackImageProvider
+from youtube_generator.plugins.image.qwen_image_local import (
+    QwenImageLocalImageProvider,
+    QwenImageLocalSettings,
+)
+from youtube_generator.plugins.image.qwen_image_nunchaku_local import (
+    QwenImageNunchakuLocalImageProvider,
+    QwenImageNunchakuLocalSettings,
+)
 from youtube_generator.plugins.text.openai_text import OpenAITextProvider
 from youtube_generator.plugins.tts.openai_tts import OpenAITTSProvider
 from youtube_generator.plugins.tts.voicevox_tts import VOICEVOXTTSProvider
@@ -102,6 +110,10 @@ class PluginManager:
             )
         if provider_name == "flux_schnell_local":
             return self._create_flux_schnell_local_provider(image_settings, retry_policy, size_setting)
+        if provider_name == "qwen_image_local":
+            return self._create_qwen_image_local_provider(image_settings, retry_policy, size_setting)
+        if provider_name == "qwen_image_nunchaku_local":
+            return self._create_qwen_image_nunchaku_local_provider(image_settings, retry_policy, size_setting)
         raise ValueError(f"未対応のimageプロバイダーです: {provider_name}")
 
     def _create_flux_schnell_local_provider(
@@ -124,6 +136,49 @@ class PluginManager:
             flux_settings.fallback_provider, image_settings, retry_policy, size_setting,
         )
         return FallbackImageProvider(primary, fallback, flux_settings.fallback_provider)
+
+    def _create_qwen_image_local_provider(
+        self, image_settings: dict[str, Any], retry_policy: RetryPolicy, size_setting: str,
+    ) -> ImageProvider:
+        qwen_settings_raw = image_settings.get("qwen_image_local", {})
+        if not isinstance(qwen_settings_raw, dict):
+            raise ValueError("config.yaml の image.qwen_image_local 設定が不正です。")
+        qwen_settings = QwenImageLocalSettings.from_mapping(qwen_settings_raw)
+        primary: ImageProvider = QwenImageLocalImageProvider(
+            qwen_settings, str(image_settings[size_setting]),
+        )
+        if qwen_settings.fallback_provider is None:
+            return primary
+        if qwen_settings.fallback_provider == "qwen_image_local":
+            raise ValueError(
+                "image.qwen_image_local.fallback_provider に qwen_image_local は指定できません。"
+            )
+        fallback = self._build_named_image_provider(
+            qwen_settings.fallback_provider, image_settings, retry_policy, size_setting,
+        )
+        return FallbackImageProvider(primary, fallback, qwen_settings.fallback_provider)
+
+    def _create_qwen_image_nunchaku_local_provider(
+        self, image_settings: dict[str, Any], retry_policy: RetryPolicy, size_setting: str,
+    ) -> ImageProvider:
+        nunchaku_settings_raw = image_settings.get("qwen_image_nunchaku_local", {})
+        if not isinstance(nunchaku_settings_raw, dict):
+            raise ValueError("config.yaml の image.qwen_image_nunchaku_local 設定が不正です。")
+        nunchaku_settings = QwenImageNunchakuLocalSettings.from_mapping(nunchaku_settings_raw)
+        primary: ImageProvider = QwenImageNunchakuLocalImageProvider(
+            nunchaku_settings, str(image_settings[size_setting]),
+        )
+        if nunchaku_settings.fallback_provider is None:
+            return primary
+        if nunchaku_settings.fallback_provider == "qwen_image_nunchaku_local":
+            raise ValueError(
+                "image.qwen_image_nunchaku_local.fallback_provider に "
+                "qwen_image_nunchaku_local は指定できません。"
+            )
+        fallback = self._build_named_image_provider(
+            nunchaku_settings.fallback_provider, image_settings, retry_policy, size_setting,
+        )
+        return FallbackImageProvider(primary, fallback, nunchaku_settings.fallback_provider)
 
     def create_metadata_generator(
         self, retry_policy: RetryPolicy, title_count: int

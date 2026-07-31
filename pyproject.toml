@@ -34,6 +34,29 @@ flux-local = [
     "accelerate>=0.30",
     "safetensors>=0.4",
 ]
+# Qwen-Image Self-host（ローカルGPU画像生成）用の任意依存関係。
+# 通常利用者（BFL/OpenAI画像プロバイダーのみ使用）にはインストール不要。
+# 導入手順・GPU/CUDA確認方法はREADME.mdを参照。
+qwen-image-local = [
+    "torch>=2.2",
+    "diffusers>=0.30",
+    "transformers>=4.40",
+    "accelerate>=0.30",
+    "safetensors>=0.4",
+]
+# Qwen-Image nunchaku(SVDQuant 4bit量子化)版 Self-host用の任意依存関係。
+# nunchaku本体は通常のpip install nunchakuでは導入できず、torch/CUDA/Pythonバージョンに
+# 対応したプリビルドwheelを https://github.com/nunchaku-tech/nunchaku/releases から
+# 個別にインストールする必要がある。導入手順はREADME.mdを参照。
+# diffusersは0.36.0に固定（動作確認済み。より新しいバージョンではnunchakuとの
+# 非互換エラーを確認している。詳細はREADME.mdを参照）。
+qwen-image-nunchaku-local = [
+    "torch>=2.2",
+    "diffusers==0.36.0",
+    "transformers>=4.40",
+    "accelerate>=0.30",
+    "safetensors>=0.4",
+]
 
 [project.scripts]
 youtube-ai-automation = "youtube_generator.cli.main:run"
