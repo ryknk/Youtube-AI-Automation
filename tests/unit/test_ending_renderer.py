@@ -141,4 +141,4 @@ def test_ending_subtitle_style_uses_position_alignment_and_margin(tmp_path: Path
 
     assert "FontName=Noto Sans JP,FontSize=30,PrimaryColour=&H0000FFFF" in filters
     assert "Alignment=9,MarginV=42" in filters
-    assert "BorderStyle=3,BackColour=&H80302010,Outline=4,Shadow=0" in filters
+    assert "BorderStyle=4,BackColour=&H80302010,Outline=0,Shadow=4" in filters

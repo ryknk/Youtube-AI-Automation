@@ -206,6 +206,6 @@ class GenerateVideoTests(unittest.TestCase):
         )
         filter_graph = command[command.index("-filter_complex") + 1]
 
-        self.assertIn("BorderStyle=3", filter_graph)
+        self.assertIn("BorderStyle=4", filter_graph)
         self.assertIn("BackColour=&H40563412", filter_graph)
-        self.assertIn("Outline=4,Shadow=0", filter_graph)
+        self.assertIn("Outline=0,Shadow=4", filter_graph)

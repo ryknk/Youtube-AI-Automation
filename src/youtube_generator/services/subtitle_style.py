@@ -24,11 +24,14 @@ def build_ass_subtitle_style(
         f"PrimaryColour={_escape_style_value(primary_color)}",
         f"Alignment={_ass_alignment(position, alignment)}",
         f"MarginV={margin}",
-        f"BorderStyle={3 if box_enabled else 1}",
+        # BorderStyle=3(不透明ボックス)はBackColourのアルファを無視し常に完全不透明になる
+        # libassの既知の制限があるため、アルファを尊重するBorderStyle=4を使う。
+        # BorderStyle=4ではOutlineが通常の文字縁取りに戻り、Shadowがボックスの余白を担う。
+        f"BorderStyle={4 if box_enabled else 1}",
         f"BackColour={_background_color(background_color, background_opacity)}",
     ]
     if box_enabled:
-        values.extend(("Outline=4", "Shadow=0"))
+        values.extend(("Outline=0", "Shadow=4"))
     return ",".join(values)
 
 
