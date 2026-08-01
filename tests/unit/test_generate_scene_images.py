@@ -42,6 +42,20 @@ class FakeOpenAIClient:
         self.images = FakeImagesResource()
 
 
+class FakeSceneVisualDescriber:
+    def __init__(self, descriptions: tuple[str, ...] | None = None) -> None:
+        self._descriptions = descriptions
+        self.received: tuple[str, ...] | None = None
+        self.call_count = 0
+
+    def describe_scenes(self, narration_texts: tuple[str, ...]) -> tuple[str, ...]:
+        self.call_count += 1
+        self.received = narration_texts
+        if self._descriptions is not None:
+            return self._descriptions
+        return tuple(f"description: {text}" for text in narration_texts)
+
+
 class GenerateSceneImagesUseCaseTests(unittest.TestCase):
     def test_execute_generates_png_for_all_scene_files_in_order(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -103,6 +117,58 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
                 ImagePromptBuilder("style"), MockImageProvider(),
                 min_display_seconds=10.0, max_display_seconds=5.0, characters_per_second=6.0,
             )
+
+    def test_scene_visual_describer_replaces_narration_text_in_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            generator = MockImageProvider()
+            describer = FakeSceneVisualDescriber(("A calm morning scene.", "A busy evening street."))
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), generator,
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+                scene_visual_describer=describer,
+            )
+
+            use_case.execute(scenes_dir)
+
+            # シーン数分ではなく、1動画につき1回だけまとめて呼び出すこと（API課金削減のため）。
+            self.assertEqual(describer.call_count, 1)
+            self.assertEqual(describer.received, ("1番目の場面", "2番目の場面"))
+            self.assertIn("A calm morning scene.", generator.prompts[0])
+            self.assertNotIn("1番目の場面", generator.prompts[0])
+            self.assertIn("A busy evening street.", generator.prompts[1])
+            self.assertNotIn("2番目の場面", generator.prompts[1])
+
+    def test_scene_visual_describer_mismatched_count_raises_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            describer = FakeSceneVisualDescriber(("説明が1件だけ",))
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("style"), MockImageProvider(),
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+                scene_visual_describer=describer,
+            )
+
+            with self.assertRaises(ValueError):
+                use_case.execute(scenes_dir)
+
+    def test_without_scene_visual_describer_uses_narration_text_directly(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            generator = MockImageProvider()
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), generator,
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+            )
+
+            use_case.execute(scenes_dir)
+
+            self.assertIn("1番目の場面", generator.prompts[0])
 
     def test_openai_image_generator_requests_high_quality_landscape_png(self) -> None:
         client = FakeOpenAIClient()

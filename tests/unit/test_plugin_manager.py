@@ -326,3 +326,56 @@ class PluginManagerTests(unittest.TestCase):
         provider = manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
 
         self.assertIsInstance(provider, QwenImageNunchakuLocalImageProvider)
+
+    def test_scene_visual_describer_disabled_by_default(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"text": "openai"}, {})
+
+        describer = manager.create_scene_visual_describer({}, RetryPolicy(max_attempts=1))
+
+        self.assertIsNone(describer)
+
+    def test_scene_visual_describer_disabled_when_flag_false(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"text": "openai"}, {})
+        image_settings = {"scene_description": {"enabled": False}}
+
+        describer = manager.create_scene_visual_describer(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertIsNone(describer)
+
+    @patch("youtube_generator.plugins.manager.OpenAISceneVisualDescriber")
+    def test_scene_visual_describer_uses_explicit_model(self, describer_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(
+            Settings(openai_api_key="test-key"), {"text": "openai"},
+            {"scene_split_model": "gpt-5.6"},
+        )
+        image_settings = {"scene_description": {"enabled": True, "model": "gpt-5.6-mini"}}
+
+        manager.create_scene_visual_describer(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertEqual(describer_class.call_args.args[1], "gpt-5.6-mini")
+
+    @patch("youtube_generator.plugins.manager.OpenAISceneVisualDescriber")
+    def test_scene_visual_describer_falls_back_to_scene_split_model(self, describer_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(
+            Settings(openai_api_key="test-key"), {"text": "openai"},
+            {"scene_split_model": "gpt-5.6"},
+        )
+        image_settings = {"scene_description": {"enabled": True, "model": None}}
+
+        manager.create_scene_visual_describer(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertEqual(describer_class.call_args.args[1], "gpt-5.6")
+
+    def test_scene_visual_describer_requires_model_when_no_fallback(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"text": "openai"}, {})
+        image_settings = {"scene_description": {"enabled": True}}
+
+        with self.assertRaisesRegex(ValueError, "scene_description.model"):
+            manager.create_scene_visual_describer(image_settings, RetryPolicy(max_attempts=1))
+
+    def test_scene_visual_describer_rejects_non_openai_text_provider(self) -> None:
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"text": "unknown"}, {})
+        image_settings = {"scene_description": {"enabled": True, "model": "gpt-5.6-mini"}}
+
+        with self.assertRaisesRegex(ValueError, "providers.textがopenai"):
+            manager.create_scene_visual_describer(image_settings, RetryPolicy(max_attempts=1))

@@ -20,8 +20,8 @@ class ImagePromptBuilder:
             raise ValueError("画像化するシーン本文が空です。")
         narration_text = _QUOTE_MARKERS.sub("", cleaned_text)
         return (
-            "Use case: template-directed visual.\n"
-            "Asset type: 16:9 YouTube video scene background.\n"
+            "Use case: a single wide illustration used as narrated video background art.\n"
+            "Format: 16:9 landscape illustration.\n"
             f"Primary request: Visually depict the situation and mood of this Japanese narration "
             f"scene: {narration_text}\n"
             f"Style/medium: {self._style}. Follow this template-specific medium and style exactly.\n"

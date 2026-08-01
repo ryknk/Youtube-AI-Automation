@@ -31,3 +31,7 @@ class VideoRenderingError(RuntimeError):
 
 class MetadataGenerationError(RuntimeError):
     """動画メタデータを有効な形式で生成できなかった場合の例外。"""
+
+
+class SceneDescriptionError(RuntimeError):
+    """画像生成プロンプト用の場面説明を生成できなかった場合の例外。"""

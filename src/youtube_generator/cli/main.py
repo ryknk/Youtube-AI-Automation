@@ -578,8 +578,10 @@ def run() -> None:
                 raise ValueError("config.yaml の retry または image 設定が不正です。")
             if not isinstance(quality_values, dict):
                 raise ValueError("config.yaml の quality 設定が不正です。")
-            image_generator = plugin_manager.create_image_provider(
-                image_settings, RetryPolicy.from_settings(retry_settings)
+            retry_policy = RetryPolicy.from_settings(retry_settings)
+            image_generator = plugin_manager.create_image_provider(image_settings, retry_policy)
+            scene_visual_describer = plugin_manager.create_scene_visual_describer(
+                image_settings, retry_policy,
             )
             image_style = template.image_style or str(image_settings["style"])
             use_case = GenerateSceneImagesUseCase(
@@ -589,6 +591,7 @@ def run() -> None:
                 max_display_seconds=float(image_settings.get("max_display_seconds", 10.0)),
                 characters_per_second=float(quality_values["characters_per_second"]),
                 max_images=int(image_settings["max_count"]),
+                scene_visual_describer=scene_visual_describer,
             )
             image_inputs = tuple(sorted(args.generate_images.glob("scene*.txt")))
             # thumbnail_model/thumbnail_sizeはシーン画像に影響しないため、
@@ -597,11 +600,19 @@ def run() -> None:
                 key: value for key, value in image_settings.items()
                 if key not in {"thumbnail_model", "thumbnail_size"}
             }
+            # scene_description.modelがnullの場合はtext.scene_split_modelへフォールバックするため
+            # （create_scene_visual_describer参照）、実際に使用されるモデル名を明示的に含める。
+            scene_description_enabled = scene_visual_describer is not None
+            scene_description_model = (
+                str(image_settings.get("scene_description", {}).get("model") or text_settings.get("scene_split_model"))
+                if scene_description_enabled else ""
+            )
             image_fingerprint = CacheManager.make_key(
                 plugin_manager.image_provider_name("scene"),
                 json.dumps(scene_image_settings, ensure_ascii=False, sort_keys=True),
-                "image-prompt-v2", image_style,
+                "image-prompt-v3", image_style,
                 str(quality_values["characters_per_second"]),
+                "scene-description", str(scene_description_enabled), scene_description_model,
             )
             image_cache_key = CacheManager.make_file_key("image", image_inputs, image_fingerprint)
             if cache_manager is not None and cache_manager.exists(image_cache_key, "image"):

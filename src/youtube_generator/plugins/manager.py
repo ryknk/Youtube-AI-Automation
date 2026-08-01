@@ -6,7 +6,9 @@ from youtube_generator.config import Settings
 from youtube_generator.domain.scene_splitter import SceneSplitter
 from youtube_generator.domain.metadata_generator import MetadataGenerator
 from youtube_generator.infrastructure.openai_metadata_generator import OpenAIMetadataGenerator
+from youtube_generator.infrastructure.openai_scene_visual_describer import OpenAISceneVisualDescriber
 from youtube_generator.plugins.base.image_provider import ImageProvider
+from youtube_generator.plugins.base.scene_visual_describer import SceneVisualDescriber
 from youtube_generator.plugins.base.text_generator import TextGenerator
 from youtube_generator.plugins.base.tts_provider import TTSProvider
 from youtube_generator.plugins.image.openai_image import OpenAIImageProvider
@@ -181,6 +183,27 @@ class PluginManager:
             nunchaku_settings.fallback_provider, image_settings, retry_policy, size_setting,
         )
         return FallbackImageProvider(primary, fallback, nunchaku_settings.fallback_provider)
+
+    def create_scene_visual_describer(
+        self, image_settings: dict[str, Any], retry_policy: RetryPolicy,
+    ) -> SceneVisualDescriber | None:
+        """``image.scene_description.enabled`` がtrueの場合のみ生成する。falseまたは未設定
+        の場合はNoneを返し、呼び出し側は従来どおり生のナレーション文を画像プロンプトへ使う。"""
+        scene_description_settings = image_settings.get("scene_description", {})
+        if not isinstance(scene_description_settings, dict):
+            raise ValueError("config.yaml の image.scene_description 設定が不正です。")
+        if not bool(scene_description_settings.get("enabled", False)):
+            return None
+        if self._provider_name("text") != "openai":
+            raise ValueError(
+                "image.scene_description.enabled=true はproviders.textがopenaiの場合のみ利用できます。"
+            )
+        model = scene_description_settings.get("model") or self._text_settings.get("scene_split_model")
+        if not model:
+            raise ValueError(
+                "config.yaml の image.scene_description.model または text.scene_split_model を指定してください。"
+            )
+        return OpenAISceneVisualDescriber(self._api_key(), str(model), retry_policy)
 
     @staticmethod
     def _prompt_suffix(image_settings: dict[str, Any], provider_name: str) -> str:
