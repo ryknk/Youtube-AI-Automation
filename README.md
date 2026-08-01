@@ -172,6 +172,8 @@ subtitles:
 
 stable-tsが未インストール、またはアライメントに失敗した場合でも音声生成・動画生成は停止しません。失敗したシーンは`sceneNN.alignment.json`が作成されず、字幕生成時に自動的に`fallback_timing_mode`（既定: `character_ratio`）へフォールバックします。
 
+シーン単位ではアライメントが成功しても、`Failed to align the last N words after ...`のように音声末尾（または先頭）の一部単語だけタイムスタンプを検出できない場合があります。この場合、その無音区間は該当シーンの最初または最後の字幕セグメントの表示時間へ吸収され、シーン音声の実際の長さ（`sceneNN.mp3`の全長）と字幕の合計時間が常に一致するように補正されます。これにより、無音区間を跨いで字幕の表示タイミングが音声より先行していく累積ズレを防いでいます。
+
 ## ジョブキューで動画を生成する
 
 ```powershell
@@ -211,6 +213,8 @@ output/<ジャンル名>/<実行ID>_<入力テーマ>/
 CSVは`theme,template`ヘッダー、JSONは`theme`と`template`を持つオブジェクトの配列を使用します。
 
 `queue list`と`queue status`は1ジョブを1行で表示します。これらを含むすべてのコマンド出力は`run.ps1`内部で`Out-Host`へ渡されます。
+
+`config/config.yaml`の`queue.skip_thumbnail`を`true`にすると、キュー実行時のサムネイル生成工程（API呼び出し・成果物コピー）をスキップできます。画像生成中は`画像生成: (n/総数)`という進捗がジョブごとにログ出力されます。
 
 ## キューを使わずに1件実行する
 
@@ -291,7 +295,7 @@ bgm:
     fade_in: 0.5
 ```
 
-`main` / `ending` / `final`には、共通設定の`enabled`・`file`・`volume`・`loop`・`fade_in`・`fade_out`・`missing_file_behavior`のうち上書きしたい項目だけを記述できます。`file`も対象ごとに個別のBGM音源へ差し替え可能です（上記例ではエンディングだけ`assets/ending.mp3`を使用）。個別設定がない項目・用途は共通値を継承します。BGMの優先順位は、テンプレート固有、`default`テンプレート、`config/config.yaml`のグローバル設定、BGMなしです。テンプレート側で`enabled: false`を指定した場合はフォールバックしません。音源ファイルまたは設定が変わると、エンディングのキャッシュキーも変わります。
+`main` / `ending` / `final`には、共通設定の`enabled`・`file`・`volume`・`loop`・`fade_in`・`fade_out`・`missing_file_behavior`のうち上書きしたい項目だけを記述できます。`file`も対象ごとに個別のBGM音源へ差し替え可能です（上記例ではエンディングだけ`assets/ending.mp3`を使用）。個別設定がない項目・用途は共通値を継承します。BGMの優先順位は、テンプレート固有、`default`テンプレート、`config/config.yaml`のグローバル設定、BGMなしです。テンプレート側で`enabled: false`を指定した場合はフォールバックしません。音源ファイルまたは設定が変わると、エンディングのキャッシュキーも変わります。ナレーション音量はBGMの有効・無効に関わらず一定に保たれます（本編・エンディング・`final_mix`いずれも`amix`フィルターの自動音量正規化を無効化しています）。
 
 ```powershell
 .\run.cmd bgm show --template history
@@ -395,6 +399,27 @@ image:
 
 FLUX.1 Schnellはguidance_scale=0.0の蒸留モデルのため`negative_prompt`が効かず、BFL APIも`negative_prompt`相当のパラメータを持たないため、いずれもポジティブプロンプトへの追記という同じ方式で実装しています。
 
+## ローカルSelf-host画像生成の動作確認・テスト生成
+
+以下のコマンドは、`providers.image`（またはproviders.image.scene）で選択中のSelf-hostプロバイダー（`flux_schnell_local` / `qwen_image_local` / `qwen_image_nunchaku_local`）に対して共通で動作します。個別のプロバイダーごとに別コマンドはありません。
+
+### 環境確認（画像生成・API呼び出しは一切行わない）
+
+```powershell
+.\run.cmd image local-check
+```
+
+選択中のプロバイダーに応じて、torch/CUDA/diffusers（nunchaku利用時は`nunchaku`パッケージやPythonバージョン対応も含む）の導入状況、GPU名・VRAM容量、モデルのローカルキャッシュ有無、Provider構築可否などを表示します。
+
+### テスト画像を1枚だけ生成する
+
+```powershell
+.\run.cmd image test-generate
+.\run.cmd image test-generate --output output\local_image_check\sample.png --prompt "a calm mountain landscape"
+```
+
+実際にモデルのロード・推論が行われます（初回実行時はモデルのダウンロードも発生します）。既定の保存先は`output\local_image_check\test_image.png`です。
+
 ## FLUX.1 Schnell Self-host（ローカルGPU画像生成）
 
 シーン画像をAPIではなくローカルGPU（Hugging Face Diffusers + FLUX.1 Schnell）で生成し、画像API費用を削減できます。サムネイルは従来どおりBFL/OpenAIのままにできます。
@@ -424,24 +449,7 @@ torchはお使いのGPU/CUDAバージョンに対応したビルドが必要な�
 
 ### モデルの初回ダウンロード
 
-初回生成時（またはCLIの`test-generate`実行時）に、Hugging Faceから`model_id`のモデルが自動ダウンロードされ、既定では`%USERPROFILE%\.cache\huggingface\hub`へキャッシュされます。保存先を変更する場合は`image.flux_schnell_local.model_cache_dir`を指定してください。以降はダウンロード済みモデルが再利用されます。
-
-### GPU・CUDAの確認方法
-
-画像を生成せず、APIも呼ばずに実行環境だけを確認できます。
-
-```powershell
-.\run.cmd image local-check
-```
-
-torch/CUDAの導入状況、GPU名、VRAM容量、bfloat16対応、モデルのローカルキャッシュ有無、設定された生成サイズ、Provider構築可否を表示します。
-
-明示的に1枚だけテスト画像を生成したい場合（実際にモデルロード・推論が走ります）：
-
-```powershell
-.\run.cmd image test-generate
-.\run.cmd image test-generate --output output\flux_local_check\sample.png --prompt "a calm mountain landscape"
-```
+初回生成時（またはCLIの`test-generate`実行時）に、Hugging Faceから`model_id`のモデルが自動ダウンロードされ、既定では`%USERPROFILE%\.cache\huggingface\hub`へキャッシュされます。保存先を変更する場合は`image.flux_schnell_local.model_cache_dir`を指定してください。以降はダウンロード済みモデルが再利用されます。動作確認・テスト生成コマンドは[ローカルSelf-host画像生成の動作確認・テスト生成](#ローカルself-host画像生成の動作確認テスト生成)を参照してください。
 
 ### 設定例
 
@@ -560,7 +568,7 @@ torchはお使いのGPU/CUDAバージョンに対応したビルドが必要な�
 
 ### モデルの初回ダウンロード
 
-初回生成時に、Hugging Faceから`model_id`のモデルが自動ダウンロードされ、既定では`%USERPROFILE%\.cache\huggingface\hub`へキャッシュされます。保存先を変更する場合は`image.qwen_image_local.model_cache_dir`を指定してください。以降はダウンロード済みモデルが再利用されます。
+初回生成時（またはCLIの`test-generate`実行時）に、Hugging Faceから`model_id`のモデルが自動ダウンロードされ、既定では`%USERPROFILE%\.cache\huggingface\hub`へキャッシュされます。保存先を変更する場合は`image.qwen_image_local.model_cache_dir`を指定してください。以降はダウンロード済みモデルが再利用されます。動作確認・テスト生成コマンドは[ローカルSelf-host画像生成の動作確認・テスト生成](#ローカルself-host画像生成の動作確認テスト生成)を参照してください。
 
 ### 設定例
 
@@ -722,6 +730,46 @@ image:
 ### ライセンスの確認
 
 nunchaku（SVDQuant）およびQwen-Imageのライセンス・利用条件はこのドキュメントでは判断しません。公開・収益化する動画に使用する前に、必ず[nunchaku-qwen-imageのモデルカード](https://huggingface.co/nunchaku-ai/nunchaku-qwen-image)と[Qwen-Imageの公式モデルカード](https://huggingface.co/Qwen/Qwen-Image)で最新のライセンス内容をご自身で確認してください。
+
+## シーン画像プロンプト用の場面説明生成（scene_description）
+
+Qwen-Image等の文字レンダリング精度が高いモデルでは、シーン画像プロンプトへ生の日本語ナレーション文をそのまま渡すと、その文章が字幕・キャプションのように画面へ描画されてしまうことがあります。これを避けるため、`image.scene_description.enabled: true`（`providers.text`が`openai`の場合のみ利用可）にすると、ナレーション文の代わりにOpenAIで生成した短い英語の場面説明を画像プロンプトへ渡します。
+
+```yaml
+image:
+  scene_description:
+    enabled: true
+    # nullの場合はtext.scene_split_modelを使用する。
+    model: null
+```
+
+動画1本につきOpenAI APIを1回のみ呼び出し、全シーン分をまとめて生成します（追加課金あり）。実装は`OpenAISceneVisualDescriber`（[openai_scene_visual_describer.py](src/youtube_generator/infrastructure/openai_scene_visual_describer.py)）です。
+
+## シーン画像の後処理でキャプション帯を除去する（scene_edit）
+
+生成したシーン画像に字幕・キャプション風の文字が写り込んだ場合、Qwen-Image-Edit（nunchaku 4bit量子化版）による編集ステップで除去できます。既定は無効です。
+
+```yaml
+image:
+  scene_edit:
+    enabled: true
+    # 現状qwen_image_edit_nunchaku_localのみ対応。
+    provider: qwen_image_edit_nunchaku_local
+```
+
+有効化するとシーン画像1枚ごとに追加の推論が発生し処理時間が大きく増加します（実測: RTX 4070/12GBで`num_inference_steps=8`のとき約107秒/枚。別途モデルダウンロード・ロードで初回のみ約13分、ディスク使用量+約27GBが必要）。詳細な設定項目（`precision`/`rank`/`lightning_steps`等）は`config/config.yaml`の`image.qwen_image_edit_nunchaku_local`を参照してください。CUDA専用でCPU実行には対応していません。
+
+## シーン内の画像を複数枚・自然なタイミングで切り替える
+
+1シーンの音声が長い場合、1枚の画像だけを表示し続けると単調になります。`image.min_display_seconds`（既定3.0秒）〜`image.max_display_seconds`（既定15.0秒）の範囲で、文単位の自然な区切りに沿って1シーン内に複数枚の画像（`sceneNN_MM.png`、MM=シーン内の通し番号）を生成・表示します。
+
+```yaml
+image:
+  min_display_seconds: 3.0
+  max_display_seconds: 15.0
+```
+
+画像生成時の区切りは`characters_per_second`による文字数からの推定のみを使用し、実際の音声長やstable-tsアライメントには依存しません（TTS設定変更のたびにシーン画像まで再生成されるのを防ぐため）。実際の表示秒数は動画レンダリング時に、生成済みの画像枚数を正として実音声長・アライメント結果へスナップされます。
 
 ## テスト
 

@@ -19,6 +19,16 @@
 
 ---
 
+### ImagePromptBuilderの指示順序見直し（CLIPの77トークン制限対応）
+
+FLUX.1 SchnellのCLIPエンコーダは77トークン固定で、T5側の`max_sequence_length`（既定256）とは別に切り詰めが発生する。[image_prompt_builder.py](src/youtube_generator/services/image_prompt_builder.py)の`Character depiction`（性別・日本人らしさの描写指示）はUse case/Format/Primary request/Style/Composition/Lightingに続く7番目のセクションに位置しており、シーン文の長さ次第ではCLIPの77トークン上限に収まらず届いていない可能性がある。
+
+- 現状判断: 実機ログで`Token indices sequence length ... (105 > 77)`を確認済みだが、指示順序を見直すか（`Character depiction`を前方へ移動する等）はユーザー判断が必要なため保留。
+- 着手条件: ユーザーが対応方針（順序変更の可否・優先度）を決めた場合。
+- 参照: 調査時点(2026-08-01)で確認済み。
+
+---
+
 ## 検討中（要件が発生するまで着手しない）
 
 ### PluginManagerの複数textプロバイダー対応

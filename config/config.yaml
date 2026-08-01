@@ -17,10 +17,7 @@ providers:
   tts: voicevox
   # 画像生成のプロバイダー
   image:
-    # 字幕・キャプション風の文字が写り込む問題が、nunchaku(4bit量子化)によるnegative_prompt/
-    # CFG追従の劣化に起因するかを切り分けるため、一時的に非量子化版へ変更中。
-    # 検証後はqwen_image_nunchaku_localへ戻すか、結果に応じて判断する。
-    scene: qwen_image_local
+    scene: qwen_image_nunchaku_local
     thumbnail: bfl
 
 # テキスト生成モデルの設定
@@ -67,7 +64,7 @@ image:
   # 処理時間が大きく増加する（実測: RTX 4070/12GBでnum_inference_steps=8のとき約107秒/枚。
   # 別途モデルダウンロード・ロードで初回のみ約13分、ディスク使用量+約27GBが必要）。
   scene_edit:
-    enabled: false
+    enabled: true
     # 現状qwen_image_edit_nunchaku_localのみ対応。
     provider: qwen_image_edit_nunchaku_local
   # scene_edit.provider が qwen_image_edit_nunchaku_local の場合のみ使用される。
@@ -80,7 +77,7 @@ image:
     # （Blackwell/50シリーズはnvfp4、それ以外はint4）。int4 / nvfp4 も明示指定可。
     precision: auto
     # 32: 高速（軽量） / 128: 高品質（重い）
-    rank: 32
+    rank: 128
     # 4 または 8 を指定するとその step数専用のLightning蒸留版を使用する（推奨・高速）。
     # nullにすると非蒸留版を使用し、num_inference_stepsを自由に指定できる
     # （未指定時は40 stepsを既定値として使用、処理時間はさらに増加する）。
