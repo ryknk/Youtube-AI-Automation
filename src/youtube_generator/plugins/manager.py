@@ -7,6 +7,7 @@ from youtube_generator.domain.scene_splitter import SceneSplitter
 from youtube_generator.domain.metadata_generator import MetadataGenerator
 from youtube_generator.infrastructure.openai_metadata_generator import OpenAIMetadataGenerator
 from youtube_generator.infrastructure.openai_scene_visual_describer import OpenAISceneVisualDescriber
+from youtube_generator.plugins.base.image_editor import ImageEditor
 from youtube_generator.plugins.base.image_provider import ImageProvider
 from youtube_generator.plugins.base.scene_visual_describer import SceneVisualDescriber
 from youtube_generator.plugins.base.text_generator import TextGenerator
@@ -18,6 +19,10 @@ from youtube_generator.plugins.image.flux_schnell_local_image import (
     FluxSchnellLocalSettings,
 )
 from youtube_generator.plugins.image.image_provider_fallback import FallbackImageProvider
+from youtube_generator.plugins.image.qwen_image_edit_nunchaku_local import (
+    QwenImageEditNunchakuLocalImageEditor,
+    QwenImageEditNunchakuLocalSettings,
+)
 from youtube_generator.plugins.image.qwen_image_local import (
     QwenImageLocalImageProvider,
     QwenImageLocalSettings,
@@ -204,6 +209,26 @@ class PluginManager:
                 "config.yaml の image.scene_description.model または text.scene_split_model を指定してください。"
             )
         return OpenAISceneVisualDescriber(self._api_key(), str(model), retry_policy)
+
+    def create_image_editor(
+        self, image_settings: dict[str, Any], retry_policy: RetryPolicy,
+    ) -> ImageEditor | None:
+        """``image.scene_edit.enabled`` がtrueの場合のみ生成する。falseまたは未設定の場合は
+        Noneを返し、呼び出し側は従来どおり生成済み画像をそのまま使う（編集ステップをスキップ）。"""
+        del retry_policy  # ローカル実行プロバイダーはリトライ非対応のため未使用（他ファクトリメソッドとの引数統一のみ目的）。
+        scene_edit_settings = image_settings.get("scene_edit", {})
+        if not isinstance(scene_edit_settings, dict):
+            raise ValueError("config.yaml の image.scene_edit 設定が不正です。")
+        if not bool(scene_edit_settings.get("enabled", False)):
+            return None
+        provider_name = str(scene_edit_settings.get("provider", "qwen_image_edit_nunchaku_local")).lower()
+        if provider_name == "qwen_image_edit_nunchaku_local":
+            editor_settings_raw = image_settings.get("qwen_image_edit_nunchaku_local", {})
+            if not isinstance(editor_settings_raw, dict):
+                raise ValueError("config.yaml の image.qwen_image_edit_nunchaku_local 設定が不正です。")
+            editor_settings = QwenImageEditNunchakuLocalSettings.from_mapping(editor_settings_raw)
+            return QwenImageEditNunchakuLocalImageEditor(editor_settings)
+        raise ValueError(f"未対応のscene_editプロバイダーです: {provider_name}")
 
     @staticmethod
     def _prompt_suffix(image_settings: dict[str, Any], provider_name: str) -> str:

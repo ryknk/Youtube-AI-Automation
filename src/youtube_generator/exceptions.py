@@ -35,3 +35,7 @@ class MetadataGenerationError(RuntimeError):
 
 class SceneDescriptionError(RuntimeError):
     """画像生成プロンプト用の場面説明を生成できなかった場合の例外。"""
+
+
+class ImageEditError(RuntimeError):
+    """生成済み画像の編集処理に失敗した場合の例外。"""

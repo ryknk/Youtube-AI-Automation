@@ -379,3 +379,37 @@ class PluginManagerTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "providers.textがopenai"):
             manager.create_scene_visual_describer(image_settings, RetryPolicy(max_attempts=1))
+
+    def test_image_editor_disabled_by_default(self) -> None:
+        manager = PluginManager(Settings(), {}, {})
+
+        editor = manager.create_image_editor({}, RetryPolicy(max_attempts=1))
+
+        self.assertIsNone(editor)
+
+    def test_image_editor_disabled_when_flag_false(self) -> None:
+        manager = PluginManager(Settings(), {}, {})
+        image_settings = {"scene_edit": {"enabled": False}}
+
+        editor = manager.create_image_editor(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertIsNone(editor)
+
+    @patch("youtube_generator.plugins.manager.QwenImageEditNunchakuLocalImageEditor")
+    def test_image_editor_creates_qwen_image_edit_nunchaku_local_when_enabled(self, editor_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(), {}, {})
+        image_settings = {
+            "scene_edit": {"enabled": True},
+            "qwen_image_edit_nunchaku_local": {"rank": 128},
+        }
+
+        manager.create_image_editor(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertEqual(editor_class.call_args.args[0].rank, 128)
+
+    def test_image_editor_rejects_unsupported_provider(self) -> None:
+        manager = PluginManager(Settings(), {}, {})
+        image_settings = {"scene_edit": {"enabled": True, "provider": "unknown"}}
+
+        with self.assertRaisesRegex(ValueError, "未対応のscene_editプロバイダー"):
+            manager.create_image_editor(image_settings, RetryPolicy(max_attempts=1))

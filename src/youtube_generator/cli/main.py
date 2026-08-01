@@ -583,6 +583,7 @@ def run() -> None:
             scene_visual_describer = plugin_manager.create_scene_visual_describer(
                 image_settings, retry_policy,
             )
+            image_editor = plugin_manager.create_image_editor(image_settings, retry_policy)
             image_style = template.image_style or str(image_settings["style"])
             use_case = GenerateSceneImagesUseCase(
                 ImagePromptBuilder(image_style),
@@ -592,6 +593,7 @@ def run() -> None:
                 characters_per_second=float(quality_values["characters_per_second"]),
                 max_images=int(image_settings["max_count"]),
                 scene_visual_describer=scene_visual_describer,
+                image_editor=image_editor,
             )
             image_inputs = tuple(sorted(args.generate_images.glob("scene*.txt")))
             # thumbnail_model/thumbnail_sizeはシーン画像に影響しないため、
@@ -626,6 +628,9 @@ def run() -> None:
             release_image_generator = getattr(image_generator, "release", None)
             if callable(release_image_generator):
                 release_image_generator()
+            release_image_editor = getattr(image_editor, "release", None)
+            if callable(release_image_editor):
+                release_image_editor()
             logger.info("%d件のPNGファイルを生成しました。", len(image_files))
             history.record(run_id, "scene_images_generated", image_count=len(image_files))
             history.record(run_id, "run_completed")

@@ -10,6 +10,7 @@ from youtube_generator.services.scene_image_timing import (
     build_scene_segments,
     group_into_image_windows,
 )
+from youtube_generator.plugins.base.image_editor import ImageEditor
 from youtube_generator.plugins.base.image_provider import ImageProvider
 from youtube_generator.plugins.base.scene_visual_describer import SceneVisualDescriber
 
@@ -35,6 +36,7 @@ class GenerateSceneImagesUseCase:
         characters_per_second: float,
         max_images: int = 8,
         scene_visual_describer: SceneVisualDescriber | None = None,
+        image_editor: ImageEditor | None = None,
     ) -> None:
         if min_display_seconds <= 0 or max_display_seconds < min_display_seconds:
             raise ValueError("image.min_display_seconds / max_display_seconds の設定が不正です。")
@@ -48,6 +50,8 @@ class GenerateSceneImagesUseCase:
         self._max_images = max_images
         # 未指定（None）の場合は、ナレーション文をそのまま画像プロンプトへ渡す従来動作を維持する。
         self._scene_visual_describer = scene_visual_describer
+        # 未指定（None）の場合は、生成した画像をそのまま使う従来動作を維持する（編集ステップをスキップ）。
+        self._image_editor = image_editor
         self._logger = get_logger(__name__)
 
     def execute(self, scenes_dir: Path) -> tuple[Path, ...]:
@@ -71,6 +75,8 @@ class GenerateSceneImagesUseCase:
             prompt = self._prompt_builder.build(prompt_source)
             image_file = scene_file.with_name(f"{scene_file.stem}_{sub_index:02d}.png")
             self._image_generator.generate_image(prompt, image_file)
+            if self._image_editor is not None:
+                self._image_editor.edit(image_file)
             image_files.append(image_file)
             self._logger.info("画像生成: (%d/%d)", progress, total)
         return tuple(image_files)

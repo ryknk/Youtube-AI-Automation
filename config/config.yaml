@@ -62,6 +62,52 @@ image:
     enabled: true
     # nullの場合はtext.scene_split_modelを使用する。
     model: null
+  # シーン画像生成後の編集（後処理）ステップ。字幕・キャプション風の文字が写り込んだ場合に
+  # 除去する用途。既定は無効（スキップ）。有効化するとシーン画像1枚ごとに追加の推論が発生し、
+  # 処理時間が大きく増加する（実測: RTX 4070/12GBでnum_inference_steps=8のとき約107秒/枚。
+  # 別途モデルダウンロード・ロードで初回のみ約13分、ディスク使用量+約27GBが必要）。
+  scene_edit:
+    enabled: false
+    # 現状qwen_image_edit_nunchaku_localのみ対応。
+    provider: qwen_image_edit_nunchaku_local
+  # scene_edit.provider が qwen_image_edit_nunchaku_local の場合のみ使用される。
+  # nunchaku(SVDQuant 4bit量子化)版Qwen-Image-Edit-2509による画像編集用の設定。
+  # CUDA専用（CPU実行は非対応）。qwen_image_nunchaku_localと同じ任意依存関係を使う。
+  qwen_image_edit_nunchaku_local:
+    base_model_id: Qwen/Qwen-Image-Edit-2509
+    transformer_repo_id: nunchaku-tech/nunchaku-qwen-image-edit-2509
+    # auto: nunchaku.utils.get_precision()でGPU世代から自動判定
+    # （Blackwell/50シリーズはnvfp4、それ以外はint4）。int4 / nvfp4 も明示指定可。
+    precision: auto
+    # 32: 高速（軽量） / 128: 高品質（重い）
+    rank: 32
+    # 4 または 8 を指定するとその step数専用のLightning蒸留版を使用する（推奨・高速）。
+    # nullにすると非蒸留版を使用し、num_inference_stepsを自由に指定できる
+    # （未指定時は40 stepsを既定値として使用、処理時間はさらに増加する）。
+    lightning_steps: 8
+    # nullの場合はlightning_stepsの値（8）を使用する。
+    num_inference_steps: null
+    true_cfg_scale: 4.0
+    # 除去・編集内容を指示するプロンプト。既定値は字幕・キャプション帯の除去指示。
+    # 実測では、下部の帯を除去した領域が反転コピー（鏡写し）のようになる副作用が確認できた
+    # ため、それを避ける指示を含めている。必要に応じて調整すること。
+    prompt: >-
+      Remove the black caption bar and any text at the bottom of the image.
+      Naturally extend the existing floor, wall, table, or background so the
+      removed area blends in, matching the surrounding lighting and
+      perspective. Do not mirror or duplicate any other part of the image.
+      Do not change anything else in the image.
+    # Qwen-Image-Edit系は空文字列だとエラーになるため半角スペースを既定値とする。
+    negative_prompt: " "
+    # 公式サンプルのしきい値（GB）。GPU VRAMがこれを超える場合はenable_model_cpu_offload、
+    # 以下の場合はtransformer.set_offload+enable_sequential_cpu_offloadを使う。
+    offload_threshold_gb: 18.0
+    low_vram_use_pin_memory: false
+    low_vram_num_blocks_on_gpu: 1
+    # nullの場合は毎回ランダムなseedを使用する
+    seed: null
+    # nullの場合はHugging Faceの既定キャッシュ（%USERPROFILE%\.cache\huggingface\hub）を使用する
+    model_cache_dir: huggingface\model_cache\Qwen-Image-Edit-2509-nunchaku
   # BFL画像プロバイダー（providers.image が bfl の場合）用の設定。
   bfl:
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
@@ -163,7 +209,7 @@ image:
     # （Blackwell/50シリーズはnvfp4、それ以外はint4）。int4 / nvfp4 も明示指定可。
     precision: auto
     # 32: 高速（軽量） / 128: 高品質（重い）
-    rank: 32
+    rank: 128
     # 公式サンプルのしきい値（GB）。GPU VRAMがこれを超える場合はenable_model_cpu_offload、
     # 以下の場合はtransformer.set_offload+enable_sequential_cpu_offloadを使う。
     offload_threshold_gb: 18.0
