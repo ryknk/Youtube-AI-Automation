@@ -240,6 +240,52 @@ class QwenImageNunchakuLocalImageProviderTests(unittest.TestCase):
             "nunchaku-tech/nunchaku-qwen-image/svdq-int4_r32-qwen-image.safetensors",
         )
 
+    def test_model_cache_dir_overrides_hf_hub_cache_constant(self) -> None:
+        settings = QwenImageNunchakuLocalSettings.from_mapping({
+            "seed": 123, "width": 800, "height": 600, "model_cache_dir": "D:/custom/cache",
+        })
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        transformer_cls = FakeNunchakuTransformerClass(FakeTransformer())
+        torch_module = FakeTorch(cuda_available=True)
+        diffusers_module = FakeDiffusers(pipeline)
+        nunchaku_utils = FakeNunchakuUtils(gpu_memory_gb=24.0)
+        provider = QwenImageNunchakuLocalImageProvider(settings, "640x360")
+
+        from huggingface_hub import constants as hf_hub_constants
+        original_hf_hub_cache = hf_hub_constants.HF_HUB_CACHE
+        try:
+            patches = _patch_imports(torch_module, diffusers_module, transformer_cls, nunchaku_utils)
+            with patches[0], patches[1], patches[2]:
+                provider.generate_image("a calm landscape", self.output_file)
+
+            self.assertEqual(hf_hub_constants.HF_HUB_CACHE, "D:/custom/cache")
+        finally:
+            hf_hub_constants.HF_HUB_CACHE = original_hf_hub_cache
+
+    def test_model_cache_dir_unset_leaves_hf_hub_cache_constant_untouched(self) -> None:
+        settings = QwenImageNunchakuLocalSettings.from_mapping({
+            "seed": 123, "width": 800, "height": 600,
+        })
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        transformer_cls = FakeNunchakuTransformerClass(FakeTransformer())
+        torch_module = FakeTorch(cuda_available=True)
+        diffusers_module = FakeDiffusers(pipeline)
+        nunchaku_utils = FakeNunchakuUtils(gpu_memory_gb=24.0)
+        provider = QwenImageNunchakuLocalImageProvider(settings, "640x360")
+
+        from huggingface_hub import constants as hf_hub_constants
+        original_hf_hub_cache = hf_hub_constants.HF_HUB_CACHE
+        try:
+            patches = _patch_imports(torch_module, diffusers_module, transformer_cls, nunchaku_utils)
+            with patches[0], patches[1], patches[2]:
+                provider.generate_image("a calm landscape", self.output_file)
+
+            self.assertEqual(hf_hub_constants.HF_HUB_CACHE, original_hf_hub_cache)
+        finally:
+            hf_hub_constants.HF_HUB_CACHE = original_hf_hub_cache
+
     def test_prompt_suffix_is_appended_when_configured(self) -> None:
         settings = QwenImageNunchakuLocalSettings.from_mapping({
             "seed": 123, "width": 800, "height": 600,

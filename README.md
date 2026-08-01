@@ -663,6 +663,14 @@ python -m pip install torch==<バージョン> torchaudio==<バージョン> --i
 
 `.\run.cmd image local-check`を実行すると、現在のPythonバージョンがnunchakuのプリビルドwheel対応範囲内かどうかを含めて確認できます。
 
+### 量子化transformerのキャッシュ先について（重要）
+
+nunchaku本体（`NunchakuQwenImageTransformer2DModel.from_pretrained()`）は`cache_dir`引数を受け取っても内部の`hf_hub_download()`呼び出しへ転送しないため、素朴には`image.qwen_image_nunchaku_local.model_cache_dir`が量子化transformer本体（`nunchaku-tech/nunchaku-qwen-image`）のダウンロード先には反映されません（実装を確認済み: `nunchaku/utils.py`の`hf_hub_download()`呼び出しに`cache_dir`が渡されていません）。
+
+このプロジェクトでは、`QwenImageNunchakuLocalImageProvider`がモデルロード時に`huggingface_hub.constants.HF_HUB_CACHE`（`hf_hub_download()`がcache_dir未指定時に参照する既定キャッシュ先）を`model_cache_dir`の値へ直接上書きすることで対応しています。そのため、**`image.qwen_image_nunchaku_local.model_cache_dir`を設定するだけで**、ベースパイプラインと量子化transformerの両方が同じフォルダへキャッシュされます。diffusers側の`cache_dir`を明示指定している他の呼び出し（ベースパイプラインやFLUX/Qwen-Imageの通常版）はこの既定値より優先されるため、影響を受けません。
+
+既に`%USERPROFILE%\.cache\huggingface\hub`へダウンロード済みの場合、`model_cache_dir`を設定しただけでは自動移動されません。該当フォルダ（`models--nunchaku-tech--nunchaku-qwen-image`）を削除してから再実行すると、`model_cache_dir`で指定したフォルダへ再ダウンロードされます。
+
 ### 設定例
 
 ```yaml

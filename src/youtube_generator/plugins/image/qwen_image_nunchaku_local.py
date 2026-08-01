@@ -199,6 +199,7 @@ class QwenImageNunchakuLocalImageProvider(ImageProvider):
             )
         diffusers = self._import_diffusers()
         nunchaku_transformer_cls, nunchaku_utils = self._import_nunchaku()
+        self._apply_transformer_cache_dir()
 
         precision = self._settings.precision
         if precision == "auto":
@@ -255,6 +256,21 @@ class QwenImageNunchakuLocalImageProvider(ImageProvider):
         self._logger.info("Qwen-Image(nunchaku)ローカルモデルのロードが完了しました: %.2f秒", load_seconds)
         self._pipeline = pipeline
         return pipeline
+
+    def _apply_transformer_cache_dir(self) -> None:
+        """量子化transformerのダウンロード先をconfig.yamlのmodel_cache_dirへ反映する。
+
+        NunchakuQwenImageTransformer2DModel.from_pretrained()はcache_dir引数を受け取っても
+        内部のhf_hub_download()呼び出しへ転送しないため無視される（nunchaku 1.2.1で確認済み）。
+        hf_hub_download()はcache_dir未指定時にhuggingface_hub.constants.HF_HUB_CACHEを
+        呼び出しごとに参照するため、この定数を直接上書きすることでmodel_cache_dirを反映する。
+        diffusers側のQwenImagePipeline.from_pretrained()はcache_dirを明示的に渡しており
+        こちらが優先されるため、この上書きによる影響を受けない。
+        """
+        if not self._settings.model_cache_dir:
+            return
+        from huggingface_hub import constants as hf_hub_constants
+        hf_hub_constants.HF_HUB_CACHE = self._settings.model_cache_dir
 
     def _apply_prompt_suffix(self, prompt: str) -> str:
         """config.yamlで指定された任意の文字列をプロンプト末尾に付加する。"""
