@@ -49,6 +49,18 @@ image:
   min_display_seconds: 3.0
   # 1シーン内で1枚の画像を表示する最大秒数（この秒数を超える前に次の画像へ切り替える）
   max_display_seconds: 15.0
+  # BFL画像プロバイダー（providers.image が bfl の場合）用の設定。
+  bfl:
+    # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
+    # 既定（未指定時）は空文字列（何も付加しない）。
+    # 例: 画面内への意図しない文字描画を防ぐ "No text." など。
+    prompt_suffix: "No text."
+  # OpenAI画像プロバイダー（providers.image が openai の場合）用の設定。
+  openai:
+    # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
+    # 既定（未指定時）は空文字列（何も付加しない）。
+    # 例: 画面内への意図しない文字描画を防ぐ "No text." など。
+    prompt_suffix: "No text."
   # FLUX.1 Schnell Self-host（ローカルGPU実行）用の設定。
   # providers.image（またはproviders.image.scene/thumbnail）を flux_schnell_local に
   # した場合のみ使用される。詳細はREADME.mdの「FLUX.1 Schnell Self-host」を参照。
@@ -74,6 +86,11 @@ image:
     # FLUX.1-schnellは公式サンプルでこの値（256）を用いて蒸留・検証されている。
     # 超えるとプロンプトが切り捨てられるか、学習時と異なる長さとして扱われ品質が不安定になりうる。
     max_sequence_length: 256
+    # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
+    # 既定（未指定時）は空文字列（何も付加しない）。
+    # FLUX.1-schnellはguidance_scale=0.0の蒸留モデルのためnegative_promptが効かないため、
+    # 画面内への意図しない文字描画を防ぐ制約などもこちらで指定する（例: "No text."）。
+    prompt_suffix: "No text."
     enable_cpu_offload: false
     enable_attention_slicing: false
     low_vram_mode: true
@@ -101,6 +118,11 @@ image:
     # nullの場合は毎回ランダムなseedを使用し、実際に使用したseedをログ・画像メタデータへ記録する
     seed: null
     negative_prompt: ""
+    # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
+    # 既定（未指定時）は空文字列（何も付加しない）。
+    # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
+    # 文字描画を防ぐ制約など。
+    prompt_suffix: "Ultra HD, 4K, cinematic composition."
     enable_cpu_offload: false
     enable_attention_slicing: false
     low_vram_mode: true
@@ -138,6 +160,11 @@ image:
     # nullの場合は毎回ランダムなseedを使用し、実際に使用したseedをログ・画像メタデータへ記録する
     seed: null
     negative_prompt: ""
+    # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
+    # 既定（未指定時）は空文字列（何も付加しない）。
+    # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
+    # 文字描画を防ぐ制約など。
+    prompt_suffix: "Ultra HD, 4K, cinematic composition."
     # nullの場合はHugging Faceの既定キャッシュ（%USERPROFILE%\.cache\huggingface\hub）を使用する
     model_cache_dir: huggingface\model_cache\Qwen-Image-nunchaku
     # 明示しない限りAPIへは自動フォールバックしない（意図しないAPI課金を防止）。例: bfl / openai

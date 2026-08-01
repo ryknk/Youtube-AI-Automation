@@ -56,3 +56,18 @@ class BFLImageGeneratorTests(unittest.TestCase):
             submission = json.loads(transport.requests[0].data.decode())
             self.assertEqual((submission["width"], submission["height"]), (1920, 1080))
             self.assertEqual(submission["output_format"], "png")
+            self.assertEqual(submission["prompt"], "cinematic landscape")
+
+    def test_prompt_suffix_is_appended_when_configured(self) -> None:
+        transport = FakeOpenUrl()
+        generator = BFLImageGenerator(
+            "test-key", "flux-2-pro", "1920x1080",
+            RetryPolicy(max_attempts=1, timeout_seconds=1), open_url=transport, prompt_suffix="No text.",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_file = Path(directory) / "scene01.png"
+
+            generator.generate("cinematic landscape", output_file)
+
+            submission = json.loads(transport.requests[0].data.decode())
+            self.assertEqual(submission["prompt"], "cinematic landscape, No text.")

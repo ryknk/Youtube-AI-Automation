@@ -126,6 +126,7 @@ class QwenImageLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.num_inference_steps, 50)
         self.assertEqual(settings.true_cfg_scale, 4.0)
         self.assertEqual(settings.negative_prompt, "")
+        self.assertEqual(settings.prompt_suffix, "")
         self.assertIsNone(settings.seed)
         self.assertIsNone(settings.fallback_provider)
         self.assertFalse(settings.allow_cpu)
@@ -134,7 +135,8 @@ class QwenImageLocalSettingsTests(unittest.TestCase):
         settings = QwenImageLocalSettings.from_mapping({
             "model_id": "org/model", "device": "CUDA", "dtype": "FLOAT16",
             "num_inference_steps": 30, "true_cfg_scale": 2.5, "width": 512, "height": 512,
-            "seed": 42, "negative_prompt": "blurry", "enable_cpu_offload": True,
+            "seed": 42, "negative_prompt": "blurry", "prompt_suffix": "Ultra HD, 4K.",
+            "enable_cpu_offload": True,
             "enable_attention_slicing": True, "low_vram_mode": True,
             "model_cache_dir": "/tmp/cache", "allow_cpu": True, "fallback_provider": "BFL",
         })
@@ -146,6 +148,7 @@ class QwenImageLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.true_cfg_scale, 2.5)
         self.assertEqual(settings.seed, 42)
         self.assertEqual(settings.negative_prompt, "blurry")
+        self.assertEqual(settings.prompt_suffix, "Ultra HD, 4K.")
         self.assertEqual(settings.fallback_provider, "bfl")
         self.assertTrue(settings.allow_cpu)
 
@@ -185,6 +188,39 @@ class QwenImageLocalImageProviderTests(unittest.TestCase):
         self.assertEqual(call["num_inference_steps"], 50)
         self.assertEqual(call["true_cfg_scale"], 4.0)
         self.assertEqual(call["generator"].seed, 123)
+
+    def test_prompt_suffix_is_appended_when_configured(self) -> None:
+        settings = QwenImageLocalSettings.from_mapping({
+            "seed": 123, "allow_cpu": True, "prompt_suffix": "Ultra HD, 4K, cinematic composition. No text.",
+        })
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        provider = QwenImageLocalImageProvider(settings, "640x360")
+
+        with patch.object(QwenImageLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(QwenImageLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("a calm landscape", self.output_file)
+
+        self.assertEqual(
+            pipeline.calls[0]["prompt"],
+            "a calm landscape, Ultra HD, 4K, cinematic composition. No text.",
+        )
+
+    def test_prompt_suffix_defaults_to_empty(self) -> None:
+        settings = QwenImageLocalSettings.from_mapping({"seed": 123, "allow_cpu": True})
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        provider = QwenImageLocalImageProvider(settings, "640x360")
+
+        with patch.object(QwenImageLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(QwenImageLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("a calm landscape", self.output_file)
+
+        self.assertEqual(pipeline.calls[0]["prompt"], "a calm landscape")
 
     def test_negative_prompt_is_configurable(self) -> None:
         settings = QwenImageLocalSettings.from_mapping({

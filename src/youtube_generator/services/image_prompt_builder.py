@@ -37,5 +37,5 @@ class ImagePromptBuilder:
             "Dialogue/thoughts: convey any spoken lines or inner thoughts purely through facial "
             "expression, gaze, posture, body language, and the surrounding situation.\n"
             "Constraints: 16:9 landscape image, maintain the specified style consistently across "
-            "all scenes, no text."
+            "all scenes."
         )

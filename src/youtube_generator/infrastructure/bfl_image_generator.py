@@ -22,6 +22,7 @@ class BFLImageGenerator:
     def __init__(
         self, api_key: str, model: str, size: str, retry_policy: RetryPolicy,
         open_url: OpenUrl = urlopen, sleep: Callable[[float], None] = time.sleep,
+        prompt_suffix: str = "",
     ) -> None:
         try:
             width_text, height_text = size.lower().split("x", maxsplit=1)
@@ -35,12 +36,15 @@ class BFLImageGenerator:
         self._retry_policy = retry_policy
         self._open_url = open_url
         self._sleep = sleep
+        # config.yamlで指定された任意の文字列をポジティブプロンプト末尾に付加する。既定は空文字列。
+        self._prompt_suffix = prompt_suffix
         self._logger = get_logger(__name__)
 
     def generate(self, prompt: str, output_file: Path) -> None:
         if not prompt.strip():
             raise ImageGenerationError("画像生成プロンプトが空です。")
-        submission = Retry(self._retry_policy, self._logger)(self._submit)(prompt)
+        effective_prompt = f"{prompt}, {self._prompt_suffix}" if self._prompt_suffix else prompt
+        submission = Retry(self._retry_policy, self._logger)(self._submit)(effective_prompt)
         polling_url = submission.get("polling_url")
         if not isinstance(polling_url, str) or not polling_url.startswith("https://"):
             raise ImageGenerationError("BFL APIから有効なpolling_urlを取得できませんでした。")

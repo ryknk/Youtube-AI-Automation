@@ -50,6 +50,11 @@ class FluxSchnellLocalSettings:
     allow_cpu: bool = False
     fallback_provider: str | None = None
     negative_prompt: str | None = None
+    # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
+    # 既定は空文字列（何も付加しない）。config.yamlのimage.flux_schnell_local.prompt_suffixで指定する。
+    # FLUX.1-schnellはguidance_scale=0.0の蒸留モデルのためnegative_promptが効かないため、
+    # 画面内への意図しない文字描画を防ぐ制約などもこちらで指定する。
+    prompt_suffix: str = ""
     # Civitai等で配布される、transformer(拡散モデル本体)のみを含む単一safetensorsの
     # ローカルパス。指定時はこのtransformerのみを差し替え、VAE/テキストエンコーダ/
     # tokenizer/schedulerはmodel_idのベースモデルからそのまま利用する。
@@ -87,6 +92,7 @@ class FluxSchnellLocalSettings:
                 allow_cpu=bool(values.get("allow_cpu", False)),
                 fallback_provider=str(fallback_provider).lower() if fallback_provider else None,
                 negative_prompt=str(negative_prompt) if negative_prompt else None,
+                prompt_suffix=str(values.get("prompt_suffix", "")),
                 transformer_path=str(transformer_path) if transformer_path else None,
             )
         except (TypeError, ValueError) as error:
@@ -111,6 +117,7 @@ class FluxSchnellLocalImageProvider(ImageProvider):
     def generate_image(self, prompt: str, output_file: Path) -> None:
         if not prompt.strip():
             raise ImageGenerationError("画像生成プロンプトが空です。")
+        effective_prompt = self._apply_prompt_suffix(prompt)
         torch = self._import_torch()
         pipeline = self._ensure_pipeline()
         seed = self._settings.seed if self._settings.seed is not None else random.randint(0, 2**31 - 1)
@@ -123,7 +130,7 @@ class FluxSchnellLocalImageProvider(ImageProvider):
             self._settings.width, self._settings.height, self._settings.max_sequence_length, seed,
         )
         generation_kwargs: dict[str, Any] = {
-            "prompt": prompt,
+            "prompt": effective_prompt,
             "width": self._settings.width,
             "height": self._settings.height,
             "num_inference_steps": self._settings.num_inference_steps,
@@ -258,6 +265,12 @@ class FluxSchnellLocalImageProvider(ImageProvider):
         if requested == "bfloat16":
             return torch.bfloat16
         return torch.float32
+
+    def _apply_prompt_suffix(self, prompt: str) -> str:
+        """config.yamlで指定された任意の文字列をプロンプト末尾に付加する。"""
+        if not self._settings.prompt_suffix:
+            return prompt
+        return f"{prompt}, {self._settings.prompt_suffix}"
 
     def _fit_to_output_size(self, image: "Image.Image") -> "Image.Image":
         """アスペクト比を維持したまま、中央クロップ（cover）で最終サイズへ整形する。"""

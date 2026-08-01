@@ -9,9 +9,10 @@ from youtube_generator.services.retry import RetryPolicy
 
 class BFLImageProvider(ImageProvider):
     def __init__(
-        self, api_key: str, model: str, size: str, retry_policy: RetryPolicy
+        self, api_key: str, model: str, size: str, retry_policy: RetryPolicy,
+        prompt_suffix: str = "",
     ) -> None:
-        self._generator = BFLImageGenerator(api_key, model, size, retry_policy)
+        self._generator = BFLImageGenerator(api_key, model, size, retry_policy, prompt_suffix=prompt_suffix)
 
     def generate_image(self, prompt: str, output_file: Path) -> None:
         self._generator.generate(prompt, output_file)

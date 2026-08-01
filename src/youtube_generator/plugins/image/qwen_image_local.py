@@ -43,6 +43,11 @@ class QwenImageLocalSettings:
     seed: int | None = None
     # 公式サンプルはnegative_promptに空文字列を明示的に渡している。
     negative_prompt: str = ""
+    # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
+    # 既定は空文字列（何も付加しない）。config.yamlのimage.qwen_image_local.prompt_suffixで指定する。
+    # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
+    # 文字描画を防ぐ制約など。
+    prompt_suffix: str = ""
     enable_cpu_offload: bool = False
     enable_attention_slicing: bool = False
     low_vram_mode: bool = False
@@ -73,6 +78,7 @@ class QwenImageLocalSettings:
                 height=int(values.get("height", 928)),
                 seed=int(seed_value) if seed_value is not None else None,
                 negative_prompt=str(values.get("negative_prompt", "")),
+                prompt_suffix=str(values.get("prompt_suffix", "")),
                 enable_cpu_offload=bool(values.get("enable_cpu_offload", False)),
                 enable_attention_slicing=bool(values.get("enable_attention_slicing", False)),
                 low_vram_mode=bool(values.get("low_vram_mode", False)),
@@ -102,6 +108,7 @@ class QwenImageLocalImageProvider(ImageProvider):
     def generate_image(self, prompt: str, output_file: Path) -> None:
         if not prompt.strip():
             raise ImageGenerationError("画像生成プロンプトが空です。")
+        effective_prompt = self._apply_prompt_suffix(prompt)
         torch = self._import_torch()
         pipeline = self._ensure_pipeline()
         seed = self._settings.seed if self._settings.seed is not None else random.randint(0, 2**31 - 1)
@@ -114,7 +121,7 @@ class QwenImageLocalImageProvider(ImageProvider):
             self._settings.width, self._settings.height, seed,
         )
         generation_kwargs: dict[str, Any] = {
-            "prompt": prompt,
+            "prompt": effective_prompt,
             "negative_prompt": self._settings.negative_prompt,
             "width": self._settings.width,
             "height": self._settings.height,
@@ -248,6 +255,12 @@ class QwenImageLocalImageProvider(ImageProvider):
         left = (resized_size[0] - self._output_width) // 2
         top = (resized_size[1] - self._output_height) // 2
         return resized.crop((left, top, left + self._output_width, top + self._output_height))
+
+    def _apply_prompt_suffix(self, prompt: str) -> str:
+        """config.yamlで指定された任意の文字列をプロンプト末尾に付加する。"""
+        if not self._settings.prompt_suffix:
+            return prompt
+        return f"{prompt}, {self._settings.prompt_suffix}"
 
     def _save_with_metadata(self, image: "Image.Image", output_file: Path, seed: int) -> None:
         """再現性のため、使用seedなどをPNGメタデータへ埋め込んで保存する。"""

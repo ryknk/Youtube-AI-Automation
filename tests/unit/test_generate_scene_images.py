@@ -61,7 +61,6 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
             self.assertIn("1番目の場面", generator.prompts[0])
             self.assertIn("clean 2D digital illustration", generator.prompts[0])
             self.assertNotIn("realistic photography", generator.prompts[0])
-            self.assertIn("no text", generator.prompts[0])
 
     def test_long_scene_generates_multiple_images_split_by_sentence(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -106,3 +105,22 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
             self.assertEqual(output_file.read_bytes(), b"fake-png")
             self.assertEqual(client.images.request["size"], "2048x1152")
             self.assertEqual(client.images.request["quality"], "high")
+            self.assertEqual(client.images.request["prompt"], "realistic scene")
+
+    def test_openai_image_generator_prompt_suffix_is_appended_when_configured(self) -> None:
+        client = FakeOpenAIClient()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_file = Path(temporary_directory) / "scene01.png"
+            generator = OpenAIImageGenerator(
+                api_key="test-key",
+                model="gpt-image-2",
+                size="2048x1152",
+                quality="high",
+                retry_policy=RetryPolicy(max_attempts=1),
+                client=client,  # type: ignore[arg-type]
+                prompt_suffix="No text.",
+            )
+
+            generator.generate("realistic scene", output_file)
+
+            self.assertEqual(client.images.request["prompt"], "realistic scene, No text.")

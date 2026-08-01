@@ -165,6 +165,7 @@ class QwenImageNunchakuLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.low_vram_num_blocks_on_gpu, 1)
         self.assertEqual(settings.num_inference_steps, 50)
         self.assertEqual(settings.true_cfg_scale, 4.0)
+        self.assertEqual(settings.prompt_suffix, "")
         self.assertIsNone(settings.fallback_provider)
 
     def test_from_mapping_reads_all_fields(self) -> None:
@@ -172,7 +173,7 @@ class QwenImageNunchakuLocalSettingsTests(unittest.TestCase):
             "precision": "NVFP4", "rank": 128, "offload_threshold_gb": 24.0,
             "low_vram_use_pin_memory": True, "low_vram_num_blocks_on_gpu": 2,
             "num_inference_steps": 8, "true_cfg_scale": 2.0, "seed": 5,
-            "negative_prompt": "blurry", "fallback_provider": "BFL",
+            "negative_prompt": "blurry", "prompt_suffix": "Ultra HD, 4K.", "fallback_provider": "BFL",
         })
 
         self.assertEqual(settings.precision, "nvfp4")
@@ -181,6 +182,7 @@ class QwenImageNunchakuLocalSettingsTests(unittest.TestCase):
         self.assertTrue(settings.low_vram_use_pin_memory)
         self.assertEqual(settings.low_vram_num_blocks_on_gpu, 2)
         self.assertEqual(settings.seed, 5)
+        self.assertEqual(settings.prompt_suffix, "Ultra HD, 4K.")
         self.assertEqual(settings.fallback_provider, "bfl")
 
     def test_from_mapping_rejects_invalid_precision(self) -> None:
@@ -197,7 +199,9 @@ class QwenImageNunchakuLocalImageProviderTests(unittest.TestCase):
         self._temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self._temp_dir.cleanup)
         self.output_file = Path(self._temp_dir.name) / "scene01.png"
-        self.settings = QwenImageNunchakuLocalSettings.from_mapping({"seed": 123, "width": 800, "height": 600})
+        self.settings = QwenImageNunchakuLocalSettings.from_mapping({
+            "seed": 123, "width": 800, "height": 600,
+        })
 
     def test_requires_cuda(self) -> None:
         provider = QwenImageNunchakuLocalImageProvider(self.settings, "640x360")
@@ -234,6 +238,28 @@ class QwenImageNunchakuLocalImageProviderTests(unittest.TestCase):
         self.assertEqual(
             transformer_call["path"],
             "nunchaku-tech/nunchaku-qwen-image/svdq-int4_r32-qwen-image.safetensors",
+        )
+
+    def test_prompt_suffix_is_appended_when_configured(self) -> None:
+        settings = QwenImageNunchakuLocalSettings.from_mapping({
+            "seed": 123, "width": 800, "height": 600,
+            "prompt_suffix": "Ultra HD, 4K, cinematic composition. No text.",
+        })
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        transformer_cls = FakeNunchakuTransformerClass(FakeTransformer())
+        torch_module = FakeTorch(cuda_available=True)
+        diffusers_module = FakeDiffusers(pipeline)
+        nunchaku_utils = FakeNunchakuUtils(gpu_memory_gb=24.0)
+        provider = QwenImageNunchakuLocalImageProvider(settings, "640x360")
+
+        patches = _patch_imports(torch_module, diffusers_module, transformer_cls, nunchaku_utils)
+        with patches[0], patches[1], patches[2]:
+            provider.generate_image("a calm landscape", self.output_file)
+
+        self.assertEqual(
+            pipeline.calls[0]["prompt"],
+            "a calm landscape, Ultra HD, 4K, cinematic composition. No text.",
         )
 
     def test_high_vram_uses_model_cpu_offload(self) -> None:

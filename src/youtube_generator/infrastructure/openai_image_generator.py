@@ -22,19 +22,23 @@ class OpenAIImageGenerator(ImageGenerator):
         quality: str,
         retry_policy: RetryPolicy,
         client: OpenAI | None = None,
+        prompt_suffix: str = "",
     ) -> None:
         self._client = client or OpenAI(api_key=api_key, max_retries=0)
         self._model = model
         self._size = size
         self._quality = quality
         self._retry_policy = retry_policy
+        # config.yamlで指定された任意の文字列をポジティブプロンプト末尾に付加する。既定は空文字列。
+        self._prompt_suffix = prompt_suffix
         self._logger = get_logger(__name__)
 
     def generate(self, prompt: str, output_file: Path) -> None:
         """プロンプトに対応するPNG画像を生成・保存する。"""
         if not prompt.strip():
             raise ImageGenerationError("画像生成プロンプトが空です。")
-        result = self._request_image(prompt)
+        effective_prompt = f"{prompt}, {self._prompt_suffix}" if self._prompt_suffix else prompt
+        result = self._request_image(effective_prompt)
         try:
             image_base64 = result.data[0].b64_json
             if not image_base64:

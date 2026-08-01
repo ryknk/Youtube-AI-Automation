@@ -47,6 +47,36 @@ class PluginManagerTests(unittest.TestCase):
         )
         self.assertEqual(provider_class.call_args.args[1:3], ("flux-2-max", "1280x720"))
 
+    @patch("youtube_generator.plugins.manager.BFLImageProvider")
+    def test_bfl_provider_prompt_suffix_defaults_to_empty(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(bfl_api_key="test-key"), {"image": "bfl"}, {})
+        image_settings = {"scene_model": "flux-2-pro", "scene_size": "1920x1080"}
+
+        manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertEqual(provider_class.call_args.kwargs["prompt_suffix"], "")
+
+    @patch("youtube_generator.plugins.manager.BFLImageProvider")
+    def test_bfl_provider_prompt_suffix_is_configurable(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(bfl_api_key="test-key"), {"image": "bfl"}, {})
+        image_settings = {
+            "scene_model": "flux-2-pro", "scene_size": "1920x1080",
+            "bfl": {"prompt_suffix": "No watermark."},
+        }
+
+        manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertEqual(provider_class.call_args.kwargs["prompt_suffix"], "No watermark.")
+
+    @patch("youtube_generator.plugins.manager.OpenAIImageProvider")
+    def test_openai_provider_prompt_suffix_defaults_to_empty(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(openai_api_key="test-key"), {"image": "openai"}, {})
+        image_settings = {"openai_model": "gpt-image-2", "quality": "high", "scene_size": "1920x1080"}
+
+        manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        self.assertEqual(provider_class.call_args.kwargs["prompt_suffix"], "")
+
     def test_create_text_generator_rejects_unsupported_provider(self) -> None:
         manager = PluginManager(Settings(openai_api_key="test-key"), {"text": "unknown"}, {})
 

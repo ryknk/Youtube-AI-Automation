@@ -156,6 +156,7 @@ class FluxSchnellLocalSettingsTests(unittest.TestCase):
         self.assertIsNone(settings.fallback_provider)
         self.assertFalse(settings.allow_cpu)
         self.assertIsNone(settings.transformer_path)
+        self.assertEqual(settings.prompt_suffix, "")
 
     def test_from_mapping_reads_all_fields(self) -> None:
         settings = FluxSchnellLocalSettings.from_mapping({
@@ -163,7 +164,7 @@ class FluxSchnellLocalSettingsTests(unittest.TestCase):
             "num_inference_steps": 6, "guidance_scale": 1.5, "width": 512, "height": 512,
             "seed": 42, "enable_cpu_offload": True, "enable_attention_slicing": True,
             "low_vram_mode": True, "model_cache_dir": "/tmp/cache", "allow_cpu": True,
-            "fallback_provider": "BFL", "negative_prompt": "blurry",
+            "fallback_provider": "BFL", "negative_prompt": "blurry", "prompt_suffix": "No visible text.",
             "transformer_path": "huggingface/checkpoints/pixelwave_flux1_schnell_v04_bf16.safetensors",
         })
 
@@ -177,6 +178,7 @@ class FluxSchnellLocalSettingsTests(unittest.TestCase):
         self.assertEqual(
             settings.transformer_path, "huggingface/checkpoints/pixelwave_flux1_schnell_v04_bf16.safetensors",
         )
+        self.assertEqual(settings.prompt_suffix, "No visible text.")
 
     def test_from_mapping_rejects_invalid_device(self) -> None:
         with self.assertRaises(ValueError):
@@ -214,6 +216,36 @@ class FluxSchnellLocalImageProviderTests(unittest.TestCase):
         self.assertEqual(call["guidance_scale"], 0.0)
         self.assertEqual(call["max_sequence_length"], 256)
         self.assertEqual(call["generator"].seed, 123)
+
+    def test_prompt_suffix_is_appended_when_configured(self) -> None:
+        settings = FluxSchnellLocalSettings.from_mapping({
+            "seed": 123, "allow_cpu": True, "prompt_suffix": "No text.",
+        })
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        provider = FluxSchnellLocalImageProvider(settings, "640x360")
+
+        with patch.object(FluxSchnellLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(FluxSchnellLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("a calm landscape", self.output_file)
+
+        self.assertEqual(pipeline.calls[0]["prompt"], "a calm landscape, No text.")
+
+    def test_prompt_suffix_defaults_to_empty(self) -> None:
+        settings = FluxSchnellLocalSettings.from_mapping({"seed": 123, "allow_cpu": True})
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        provider = FluxSchnellLocalImageProvider(settings, "640x360")
+
+        with patch.object(FluxSchnellLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(FluxSchnellLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("a calm landscape", self.output_file)
+
+        self.assertEqual(pipeline.calls[0]["prompt"], "a calm landscape")
 
     def test_max_sequence_length_defaults_to_256_and_is_configurable(self) -> None:
         default_settings = FluxSchnellLocalSettings.from_mapping({})

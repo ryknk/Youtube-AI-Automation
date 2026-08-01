@@ -102,11 +102,13 @@ class PluginManager:
             return BFLImageProvider(
                 self._settings.bfl_api_key.get_secret_value(),
                 str(image_settings[model_setting]), str(image_settings[size_setting]), retry_policy,
+                prompt_suffix=self._prompt_suffix(image_settings, "bfl"),
             )
         if provider_name == "openai":
             return OpenAIImageProvider(
                 self._api_key(), str(image_settings["openai_model"]), str(image_settings[size_setting]),
                 str(image_settings["quality"]), retry_policy,
+                prompt_suffix=self._prompt_suffix(image_settings, "openai"),
             )
         if provider_name == "flux_schnell_local":
             return self._create_flux_schnell_local_provider(image_settings, retry_policy, size_setting)
@@ -179,6 +181,14 @@ class PluginManager:
             nunchaku_settings.fallback_provider, image_settings, retry_policy, size_setting,
         )
         return FallbackImageProvider(primary, fallback, nunchaku_settings.fallback_provider)
+
+    @staticmethod
+    def _prompt_suffix(image_settings: dict[str, Any], provider_name: str) -> str:
+        """``image.<provider_name>.prompt_suffix``を読み取る。既定は空文字列（何も付加しない）。"""
+        provider_settings = image_settings.get(provider_name, {})
+        if not isinstance(provider_settings, dict):
+            raise ValueError(f"config.yaml の image.{provider_name} 設定が不正です。")
+        return str(provider_settings.get("prompt_suffix", ""))
 
     def create_metadata_generator(
         self, retry_policy: RetryPolicy, title_count: int

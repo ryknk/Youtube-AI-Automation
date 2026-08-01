@@ -72,6 +72,11 @@ class QwenImageNunchakuLocalSettings:
     height: int = 928
     seed: int | None = None
     negative_prompt: str = ""
+    # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
+    # 既定は空文字列（何も付加しない）。config.yamlのimage.qwen_image_nunchaku_local.prompt_suffixで
+    # 指定する。例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
+    # 文字描画を防ぐ制約など。
+    prompt_suffix: str = ""
     model_cache_dir: str | None = None
     fallback_provider: str | None = None
 
@@ -102,6 +107,7 @@ class QwenImageNunchakuLocalSettings:
                 height=int(values.get("height", 928)),
                 seed=int(seed_value) if seed_value is not None else None,
                 negative_prompt=str(values.get("negative_prompt", "")),
+                prompt_suffix=str(values.get("prompt_suffix", "")),
                 model_cache_dir=str(model_cache_dir) if model_cache_dir else None,
                 fallback_provider=str(fallback_provider).lower() if fallback_provider else None,
             )
@@ -127,6 +133,7 @@ class QwenImageNunchakuLocalImageProvider(ImageProvider):
     def generate_image(self, prompt: str, output_file: Path) -> None:
         if not prompt.strip():
             raise ImageGenerationError("画像生成プロンプトが空です。")
+        effective_prompt = self._apply_prompt_suffix(prompt)
         torch = self._import_torch()
         pipeline = self._ensure_pipeline()
         seed = self._settings.seed if self._settings.seed is not None else random.randint(0, 2**31 - 1)
@@ -140,7 +147,7 @@ class QwenImageNunchakuLocalImageProvider(ImageProvider):
             self._settings.true_cfg_scale, self._settings.width, self._settings.height, seed,
         )
         generation_kwargs: dict[str, Any] = {
-            "prompt": prompt,
+            "prompt": effective_prompt,
             "negative_prompt": self._settings.negative_prompt,
             "width": self._settings.width,
             "height": self._settings.height,
@@ -248,6 +255,12 @@ class QwenImageNunchakuLocalImageProvider(ImageProvider):
         self._logger.info("Qwen-Image(nunchaku)ローカルモデルのロードが完了しました: %.2f秒", load_seconds)
         self._pipeline = pipeline
         return pipeline
+
+    def _apply_prompt_suffix(self, prompt: str) -> str:
+        """config.yamlで指定された任意の文字列をプロンプト末尾に付加する。"""
+        if not self._settings.prompt_suffix:
+            return prompt
+        return f"{prompt}, {self._settings.prompt_suffix}"
 
     def _fit_to_output_size(self, image: "Image.Image") -> "Image.Image":
         """アスペクト比を維持したまま、中央クロップ（cover）で最終サイズへ整形する。"""

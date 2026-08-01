@@ -371,6 +371,30 @@ providers:
 
 この場合は`image.openai_model`と`image.quality`が使用されます。
 
+## プロンプト末尾への追記設定（prompt_suffix）
+
+すべての画像プロバイダーは、`prompt_suffix`という共通の設定項目を持ちます。指定した任意の文字列を、生成のたびにポジティブプロンプト末尾へ`, <prompt_suffix>`として自動付加する、汎用的な仕組みです。**コード上の既定値は空文字列（何も付加しない）で、実際に付加される内容はconfig.yamlで指定したものだけが反映されます。**
+
+`config/config.yaml`には既定設定として、画面内への意図しない文字描画を防ぐ`No text.`（Qwen-Image系はこれに加えて公式ドキュメント推奨の品質向上用決まり文句）を設定済みです。
+
+```yaml
+image:
+  bfl:
+    prompt_suffix: "No text."
+  openai:
+    prompt_suffix: "No text."
+  flux_schnell_local:
+    prompt_suffix: "No text."
+  qwen_image_local:
+    prompt_suffix: "Ultra HD, 4K, cinematic composition. No text."
+  qwen_image_nunchaku_local:
+    prompt_suffix: "Ultra HD, 4K, cinematic composition. No text."
+```
+
+不要な場合は各`prompt_suffix`を空文字列（`""`）にすれば無効化できます。
+
+FLUX.1 Schnellはguidance_scale=0.0の蒸留モデルのため`negative_prompt`が効かず、BFL APIも`negative_prompt`相当のパラメータを持たないため、いずれもポジティブプロンプトへの追記という同じ方式で実装しています。
+
 ## FLUX.1 Schnell Self-host（ローカルGPU画像生成）
 
 シーン画像をAPIではなくローカルGPU（Hugging Face Diffusers + FLUX.1 Schnell）で生成し、画像API費用を削減できます。サムネイルは従来どおりBFL/OpenAIのままにできます。
@@ -442,6 +466,8 @@ image:
     # FLUX.1-schnellの公式サンプルはこの値(256)で蒸留・検証されている。超えると
     # プロンプトが切り捨てられるか、学習時と異なる長さとして扱われ品質が不安定になりうる。
     max_sequence_length: 256
+    # negative_promptが効かない蒸留モデルのため、ポジティブプロンプト末尾に付加する。空文字列で無効化可能
+    prompt_suffix: "No text."
     enable_cpu_offload: false
     enable_attention_slicing: false
     low_vram_mode: false
@@ -558,6 +584,9 @@ image:
     height: 928
     seed: null
     negative_prompt: ""
+    # 任意のプロンプト追記文字列。既定は空文字列。例はQwen-Image公式ドキュメント推奨の
+    # 品質向上用決まり文句 + 画面内テキスト描画を防ぐ制約
+    prompt_suffix: "Ultra HD, 4K, cinematic composition. No text."
     enable_cpu_offload: false
     enable_attention_slicing: false
     low_vram_mode: false
@@ -664,6 +693,9 @@ image:
     height: 928
     seed: null
     negative_prompt: ""
+    # 任意のプロンプト追記文字列。既定は空文字列。例はQwen-Image公式ドキュメント推奨の
+    # 品質向上用決まり文句 + 画面内テキスト描画を防ぐ制約
+    prompt_suffix: "Ultra HD, 4K, cinematic composition. No text."
     model_cache_dir: null
     fallback_provider: null
 ```
