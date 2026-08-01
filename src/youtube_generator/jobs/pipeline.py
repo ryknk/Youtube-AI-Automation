@@ -1,5 +1,6 @@
 """既存CLIパイプラインをジョブ単位で逐次実行するアダプター。"""
 
+import re
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,10 @@ from youtube_generator.config import PROJECT_ROOT, load_settings
 from youtube_generator.jobs.manager import Job, JobStage
 from youtube_generator.services.template_service import TemplateManager
 
+# generate_scene_images.pyが出力する進捗ログ（例: 画像生成: (3/10)）を
+# サブプロセス出力から抽出し、キュー側の進捗通知へ転送するためのパターン。
+_IMAGE_PROGRESS_PATTERN = re.compile(r"画像生成: \(\d+/\d+\)")
+
 
 class ExistingPipelineRunner:
     """既存のCLIを再利用し、工程別成果物をジョブ出力へコピーする。"""
@@ -18,7 +23,12 @@ class ExistingPipelineRunner:
     def __init__(self, skip_thumbnail: bool = False) -> None:
         self._skip_thumbnail = skip_thumbnail
 
-    def __call__(self, job: Job, update_stage: Callable[[JobStage], None]) -> None:
+    def __call__(
+        self,
+        job: Job,
+        update_stage: Callable[[JobStage], None],
+        on_progress: Callable[[str], None] | None = None,
+    ) -> None:
         work_dir = job.output_dir / ".work"
         work_dir.mkdir(exist_ok=True)
 
@@ -40,7 +50,10 @@ class ExistingPipelineRunner:
         self._copy_matching(work_dir, "scene*.mp3", job.output_dir / "audio")
 
         update_stage(JobStage.IMAGE_GENERATION)
-        self._run("--generate-images", str(work_dir), "--template", job.template)
+        self._run(
+            "--generate-images", str(work_dir), "--template", job.template,
+            on_line=self._make_image_progress_handler(on_progress) if on_progress else None,
+        )
         self._copy_matching(work_dir, "scene*.png", job.output_dir / "images")
 
         update_stage(JobStage.SUBTITLE_GENERATION)
@@ -93,8 +106,33 @@ class ExistingPipelineRunner:
         )
 
     @staticmethod
-    def _run(*arguments: str) -> None:
+    def _make_image_progress_handler(on_progress: Callable[[str], None]) -> Callable[[str], None]:
+        """サブプロセスの出力行から画像生成の進捗ログのみを抽出し、キュー側へ転送する。"""
+        def handle_line(line: str) -> None:
+            match = _IMAGE_PROGRESS_PATTERN.search(line)
+            if match:
+                on_progress(match.group(0))
+        return handle_line
+
+    @staticmethod
+    def _run(*arguments: str, on_line: Callable[[str], None] | None = None) -> None:
         command = [sys.executable, str(PROJECT_ROOT / "main.py"), *arguments]
-        completed = subprocess.run(command, cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8")
-        if completed.returncode != 0:
-            raise RuntimeError(completed.stderr[-2000:] or completed.stdout[-2000:] or "既存パイプラインが失敗しました。")
+        if on_line is None:
+            completed = subprocess.run(command, cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8")
+            if completed.returncode != 0:
+                raise RuntimeError(completed.stderr[-2000:] or completed.stdout[-2000:] or "既存パイプラインが失敗しました。")
+            return
+
+        # 進捗をリアルタイムに転送するため、完了を待たず1行ずつストリーミングで読み取る。
+        process = subprocess.Popen(
+            command, cwd=PROJECT_ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", bufsize=1,
+        )
+        output_lines: list[str] = []
+        assert process.stdout is not None
+        for line in process.stdout:
+            output_lines.append(line)
+            on_line(line.rstrip("\n"))
+        process.wait()
+        if process.returncode != 0:
+            raise RuntimeError("".join(output_lines)[-2000:] or "既存パイプラインが失敗しました。")

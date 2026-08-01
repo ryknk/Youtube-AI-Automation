@@ -62,6 +62,23 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
             self.assertIn("clean 2D digital illustration", generator.prompts[0])
             self.assertNotIn("realistic photography", generator.prompts[0])
 
+    def test_execute_logs_progress_against_total_image_count(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), MockImageProvider(),
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+            )
+
+            with self.assertLogs("youtube_generator.app.generate_scene_images", level="INFO") as logs:
+                use_case.execute(scenes_dir)
+
+            messages = [record.getMessage() for record in logs.records]
+            self.assertIn("画像生成: (1/2)", messages)
+            self.assertIn("画像生成: (2/2)", messages)
+
     def test_long_scene_generates_multiple_images_split_by_sentence(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             scenes_dir = Path(temporary_directory)

@@ -122,7 +122,7 @@ image:
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
     # 文字描画を防ぐ制約など。
-    prompt_suffix: "Ultra HD, 4K, cinematic composition."
+    prompt_suffix: "No text. Ultra HD, 4K, cinematic composition."
     enable_cpu_offload: false
     enable_attention_slicing: false
     low_vram_mode: true
@@ -164,7 +164,7 @@ image:
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
     # 文字描画を防ぐ制約など。
-    prompt_suffix: "Ultra HD, 4K, cinematic composition."
+    prompt_suffix: "No text. Ultra HD, 4K, cinematic composition."
     # nullの場合はHugging Faceの既定キャッシュ（%USERPROFILE%\.cache\huggingface\hub）を使用する
     model_cache_dir: huggingface\model_cache\Qwen-Image-nunchaku
     # 明示しない限りAPIへは自動フォールバックしない（意図しないAPI課金を防止）。例: bfl / openai

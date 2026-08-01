@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+from youtube_generator.logger import get_logger
 from youtube_generator.services.image_prompt_builder import ImagePromptBuilder
 from youtube_generator.services.scene_image_timing import (
     ImageWindow,
@@ -43,6 +44,7 @@ class GenerateSceneImagesUseCase:
         self._max_display_seconds = max_display_seconds
         self._characters_per_second = characters_per_second
         self._max_images = max_images
+        self._logger = get_logger(__name__)
 
     def execute(self, scenes_dir: Path) -> tuple[Path, ...]:
         """各シーンを番号順に画像化し、sceneNN_MM.png（MM=シーン内の通し番号）を保存する。"""
@@ -50,14 +52,20 @@ class GenerateSceneImagesUseCase:
         if not scene_files:
             raise FileNotFoundError(f"sceneNN.txt が見つかりません: {scenes_dir}")
 
-        image_files: list[Path] = []
+        plan: list[tuple[Path, int, ImageWindow]] = []
         for scene_id, scene_file in enumerate(scene_files[:self._max_images], 1):
             text = scene_file.read_text(encoding="utf-8-sig")
             for sub_index, window in enumerate(self._resolve_windows(text, scene_id), 1):
-                prompt = self._prompt_builder.build(window.text)
-                image_file = scene_file.with_name(f"{scene_file.stem}_{sub_index:02d}.png")
-                self._image_generator.generate_image(prompt, image_file)
-                image_files.append(image_file)
+                plan.append((scene_file, sub_index, window))
+
+        total = len(plan)
+        image_files: list[Path] = []
+        for progress, (scene_file, sub_index, window) in enumerate(plan, 1):
+            prompt = self._prompt_builder.build(window.text)
+            image_file = scene_file.with_name(f"{scene_file.stem}_{sub_index:02d}.png")
+            self._image_generator.generate_image(prompt, image_file)
+            image_files.append(image_file)
+            self._logger.info("画像生成: (%d/%d)", progress, total)
         return tuple(image_files)
 
     def _resolve_windows(self, text: str, scene_id: int) -> tuple[ImageWindow, ...]:

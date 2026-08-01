@@ -42,7 +42,7 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
         self.calls: list[tuple[str, ...]] = []
         self.job = _make_job("job-1", "宇宙の不思議", "default", tmp_path / "jobs" / "job-1")
 
-    def _fake_run(self, *arguments: str) -> None:
+    def _fake_run(self, *arguments: str, on_line=None) -> None:
         self.calls.append(arguments)
         command = arguments[0]
         if command == "--theme":
@@ -58,6 +58,8 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
             (Path(arguments[1]) / "scene01.mp3").write_bytes(b"audio")
         elif command == "--generate-images":
             (Path(arguments[1]) / "scene01.png").write_bytes(b"image")
+            if on_line is not None:
+                on_line("2026-01-01 00:00:00,000 | INFO | youtube_generator.app.generate_scene_images | 画像生成: (1/1)")
         elif command == "--generate-subtitles":
             (Path(arguments[1]) / "subtitles.srt").write_text(
                 "1\n00:00:00,000 --> 00:00:01,000\nテスト\n", encoding="utf-8",
@@ -71,10 +73,12 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
         else:
             raise AssertionError(f"未知のコマンドです: {command}")
 
-    def _run_pipeline(self, update_stage=lambda stage: None, skip_thumbnail: bool = False) -> None:
+    def _run_pipeline(
+        self, update_stage=lambda stage: None, skip_thumbnail: bool = False, on_progress=None,
+    ) -> None:
         with patch("youtube_generator.jobs.pipeline.load_settings", return_value=self.settings), \
              patch.object(ExistingPipelineRunner, "_run", side_effect=self._fake_run):
-            ExistingPipelineRunner(skip_thumbnail=skip_thumbnail)(self.job, update_stage)
+            ExistingPipelineRunner(skip_thumbnail=skip_thumbnail)(self.job, update_stage, on_progress)
 
     def test_copies_each_stage_output_into_job_directory(self) -> None:
         stages: list[JobStage] = []
@@ -119,6 +123,13 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
         self.assertNotIn("--generate-thumbnail", [call[0] for call in self.calls])
         self.assertFalse((self.job.output_dir / "thumbnail" / "thumbnail.png").exists())
         self.assertIn(JobStage.THUMBNAIL_GENERATION, stages)
+
+    def test_image_generation_progress_is_forwarded_with_log_noise_stripped(self) -> None:
+        progress_messages: list[str] = []
+
+        self._run_pipeline(on_progress=progress_messages.append)
+
+        self.assertEqual(progress_messages, ["画像生成: (1/1)"])
 
     def test_run_invoked_with_expected_arguments_per_stage(self) -> None:
         self._run_pipeline()
