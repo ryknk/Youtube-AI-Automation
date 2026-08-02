@@ -60,23 +60,28 @@ class GenerateSceneImagesUseCase:
         if not scene_files:
             raise FileNotFoundError(f"sceneNN.txt が見つかりません: {scenes_dir}")
 
-        plan: list[tuple[Path, int, ImageWindow]] = []
+        plan: list[tuple[ImageWindow, Path]] = []
         for scene_id, scene_file in enumerate(scene_files[:self._max_images], 1):
             text = scene_file.read_text(encoding="utf-8-sig")
             for sub_index, window in enumerate(self._resolve_windows(text, scene_id), 1):
-                plan.append((scene_file, sub_index, window))
+                image_file = scene_file.with_name(f"{scene_file.stem}_{sub_index:02d}.png")
+                plan.append((window, image_file))
 
         total = len(plan)
-        prompt_sources = self._describe_scenes(tuple(window.text for _, _, window in plan))
-        image_files: list[Path] = []
-        for progress, ((scene_file, sub_index, window), prompt_source) in enumerate(
-            zip(plan, prompt_sources), 1,
+        # 中断されたジョブの再試行等で一部の画像が既に生成済みの場合、同名ファイルが既に
+        # あれば生成済みとみなして再生成しない（無駄なAPI課金・GPU処理の防止）。
+        pending = [entry for entry in plan if not entry[1].exists()]
+        skipped = total - len(pending)
+        if skipped:
+            self._logger.info("生成済みの画像 %d/%d 件をスキップします。", skipped, total)
+        prompt_sources = self._describe_scenes(tuple(window.text for window, _ in pending))
+        image_files: list[Path] = [image_file for _, image_file in plan]
+        for progress, ((window, image_file), prompt_source) in enumerate(
+            zip(pending, prompt_sources), 1,
         ):
             prompt = self._prompt_builder.build(prompt_source)
-            image_file = scene_file.with_name(f"{scene_file.stem}_{sub_index:02d}.png")
             self._image_generator.generate_image(prompt, image_file)
-            image_files.append(image_file)
-            self._logger.info("画像生成: (%d/%d)", progress, total)
+            self._logger.info("画像生成: (%d/%d)", skipped + progress, total)
 
         if self._image_editor is not None:
             # 生成用モデルを解放してから編集用モデルをロードする。両方を同時にVRAMへ

@@ -192,6 +192,61 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
             )
             self.assertEqual(generator.release_calls, 1)
 
+    def test_execute_skips_already_generated_images(self) -> None:
+        """中断されたジョブの再試行等で一部の画像が既に生成済みの場合、再生成しない。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            (scenes_dir / "scene01_01.png").write_bytes(b"already-generated")
+            generator = MockImageProvider()
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), generator,
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+            )
+
+            image_files = use_case.execute(scenes_dir)
+
+            self.assertEqual([file.name for file in image_files], ["scene01_01.png", "scene02_01.png"])
+            self.assertEqual(len(generator.prompts), 1)
+            self.assertIn("2番目の場面", generator.prompts[0])
+            self.assertEqual((scenes_dir / "scene01_01.png").read_bytes(), b"already-generated")
+
+    def test_execute_logs_skip_count_for_already_generated_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            (scenes_dir / "scene01_01.png").write_bytes(b"already-generated")
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), MockImageProvider(),
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+            )
+
+            with self.assertLogs("youtube_generator.app.generate_scene_images", level="INFO") as logs:
+                use_case.execute(scenes_dir)
+
+            messages = [record.getMessage() for record in logs.records]
+            self.assertIn("生成済みの画像 1/2 件をスキップします。", messages)
+            self.assertIn("画像生成: (2/2)", messages)
+
+    def test_execute_does_not_call_scene_visual_describer_for_already_generated_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            (scenes_dir / "scene01_01.png").write_bytes(b"already-generated")
+            describer = FakeSceneVisualDescriber()
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("style"), MockImageProvider(),
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+                scene_visual_describer=describer,
+            )
+
+            use_case.execute(scenes_dir)
+
+            self.assertEqual(describer.received, ("2番目の場面",))
+
     def test_without_image_editor_generated_image_is_left_untouched(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             scenes_dir = Path(temporary_directory)

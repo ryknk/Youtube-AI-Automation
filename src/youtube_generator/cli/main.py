@@ -56,6 +56,27 @@ from youtube_generator.cli.image import run_image
 # この値は生成設定のみに由来し編集で変化しないため、編集キャッシュキーの安定した構成要素になる。
 _IMAGE_CACHE_KEY_SIDECAR = ".image_cache_key"
 
+# 画像1枚ごとの編集済みマーカーのファイル名接尾辞。scene*.png自体は編集で上書きされ
+# 「未編集/編集済み」を内容から判別できないため、中断されたジョブの再試行時に二重編集
+# （破壊的処理のため画質劣化を招く）を避ける目的でこのサイドカーへ編集時のキーを記録する。
+_IMAGE_EDIT_MARKER_SUFFIX = ".edited"
+
+
+def _edit_marker_file(image_file: Path) -> Path:
+    return image_file.with_name(image_file.name + _IMAGE_EDIT_MARKER_SUFFIX)
+
+
+def _is_already_edited(image_file: Path, resume_key: str) -> bool:
+    """同じ編集設定で既に編集済みかどうかを、サイドカーマーカーの内容から判定する。"""
+    marker_file = _edit_marker_file(image_file)
+    if not marker_file.is_file():
+        return False
+    return marker_file.read_text(encoding="utf-8").strip() == resume_key
+
+
+def _mark_edited(image_file: Path, resume_key: str) -> None:
+    _edit_marker_file(image_file).write_text(resume_key, encoding="utf-8")
+
 
 def _parse_image_size(size: str) -> tuple[int, int] | None:
     """"WxH"形式の画像サイズ設定を解析する。解析できない場合は品質チェックをスキップするためNoneを返す。"""
@@ -629,7 +650,18 @@ def run() -> None:
             # 生成キャッシュキーをsidecarファイルへ書き出す（scene*.pngの内容は編集で書き換わるため、
             # png自体のハッシュを編集キャッシュキーの元にすると再実行時に二重編集してしまう）。
             (args.generate_images / _IMAGE_CACHE_KEY_SIDECAR).write_text(image_cache_key, encoding="utf-8")
-            if cache_manager is not None and cache_manager.exists(image_cache_key, "image"):
+            existing_scene_images = tuple(args.generate_images.glob("scene*.png"))
+            if existing_scene_images:
+                # 中断されたジョブの再試行などでこのフォルダに一部の画像が既に生成・編集済みの
+                # 場合、キャッシュから復元すると編集済みの内容が生成直後の状態で上書きされて
+                # しまうため復元は行わず、既存ファイルを活かして未生成分のみ生成する
+                # （未生成分の判定はGenerateSceneImagesUseCase.executeの存在チェックに委ねる）。
+                image_files = use_case.execute(args.generate_images)
+                # 過去に完了済みバッチのキャッシュが既にある場合、ここでの再保存は編集済み
+                # 内容で「生成直後」キャッシュを汚染しうるため、未キャッシュ時のみ保存する。
+                if cache_manager is not None and not cache_manager.exists(image_cache_key, "image"):
+                    cache_manager.save_files(image_cache_key, "image", image_files)
+            elif cache_manager is not None and cache_manager.exists(image_cache_key, "image"):
                 image_files = cache_manager.restore_files(image_cache_key, "image", args.generate_images)
                 logger.info("画像をキャッシュから復元しました。")
                 history.record(run_id, "cache_hit", artifact="image", cache_key=image_cache_key)
@@ -689,6 +721,10 @@ def run() -> None:
                 if generation_cache_key else None
             )
 
+            # 生成キャッシュキーが得られない場合（sidecar未生成等）でも、編集設定単体の
+            # フィンガープリントを再開判定に使えるようフォールバックする。
+            resume_key = edit_cache_key or edit_fingerprint
+
             if (
                 edit_cache_key is not None and cache_manager is not None
                 and cache_manager.exists(edit_cache_key, "image_edited")
@@ -698,9 +734,19 @@ def run() -> None:
                 history.record(run_id, "cache_hit", artifact="image_edited", cache_key=edit_cache_key)
             else:
                 total = len(image_files)
-                for progress, image_file in enumerate(image_files, 1):
+                # 中断されたジョブの再試行等で一部の画像が同じ編集設定で既に編集済みの場合、
+                # 二重編集（破壊的処理のため画質劣化を招く）を避けるためスキップする。
+                pending_files = [
+                    image_file for image_file in image_files
+                    if not _is_already_edited(image_file, resume_key)
+                ]
+                skipped = total - len(pending_files)
+                if skipped:
+                    logger.info("編集済みの画像 %d/%d 件をスキップします。", skipped, total)
+                for progress, image_file in enumerate(pending_files, 1):
                     image_editor.edit(image_file)
-                    logger.info("画像編集: (%d/%d)", progress, total)
+                    _mark_edited(image_file, resume_key)
+                    logger.info("画像編集: (%d/%d)", skipped + progress, total)
                 if edit_cache_key is not None and cache_manager is not None:
                     cache_manager.save_files(edit_cache_key, "image_edited", image_files)
 
