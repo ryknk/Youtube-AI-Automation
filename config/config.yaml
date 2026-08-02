@@ -180,7 +180,10 @@ image:
     # 過剰になる副作用があるため、6.0〜7.0程度を目安にする）。
     num_inference_steps: 50
     true_cfg_scale: 6.0
-    # モデルへ渡す生成サイズ（scene_size/thumbnail_sizeとは独立。生成後にcover+中央クロップで整形する）
+    # モデルへ渡す生成サイズ（scene_size/thumbnail_sizeとは独立）。シーン画像生成用途では
+    # この解像度のまま保存され、scene_size（例:1920x1080）への整形は行わない（動画レンダリング時に
+    # ffmpegのscaleフィルタで最終解像度へ引き伸ばされるため）。サムネイル用途ではレンダリング側で
+    # リサイズされないため、従来どおりthumbnail_sizeへcover+中央クロップで整形される。
     width: 1664
     height: 928
     # nullの場合は毎回ランダムなseedを使用し、実際に使用したseedをログ・画像メタデータへ記録する
@@ -233,7 +236,10 @@ image:
     # 追従を強めている（上げすぎると彩度・コントラストが過剰になる副作用があるため、
     # 6.0〜7.0程度を目安にする）。
     true_cfg_scale: 6.0
-    # モデルへ渡す生成サイズ（scene_size/thumbnail_sizeとは独立。生成後にcover+中央クロップで整形する）
+    # モデルへ渡す生成サイズ（scene_size/thumbnail_sizeとは独立）。シーン画像生成用途では
+    # この解像度のまま保存され、scene_size（例:1920x1080）への整形は行わない（動画レンダリング時に
+    # ffmpegのscaleフィルタで最終解像度へ引き伸ばされるため）。サムネイル用途ではレンダリング側で
+    # リサイズされないため、従来どおりthumbnail_sizeへcover+中央クロップで整形される。
     width: 1664
     height: 928
     # nullの場合は毎回ランダムなseedを使用し、実際に使用したseedをログ・画像メタデータへ記録する

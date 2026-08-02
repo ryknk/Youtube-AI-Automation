@@ -252,6 +252,22 @@ class QwenImageLocalImageProviderTests(unittest.TestCase):
         with Image.open(self.output_file) as saved_image:
             self.assertEqual(saved_image.size, (640, 360))
 
+    def test_generate_image_skips_resize_when_resize_to_output_size_is_false(self) -> None:
+        """シーン画像生成用途ではresize_to_output_size=Falseとなり、生成解像度のまま
+        保存される（scene_sizeへの整形は動画レンダリング時にffmpegが行うため不要）。"""
+        source_image = Image.new("RGB", (800, 600), color="blue")
+        pipeline = FakePipeline(source_image)
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        provider = QwenImageLocalImageProvider(self.settings, "640x360", resize_to_output_size=False)
+
+        with patch.object(QwenImageLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(QwenImageLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("prompt", self.output_file)
+
+        with Image.open(self.output_file) as saved_image:
+            self.assertEqual(saved_image.size, (800, 600))
+
     def test_generate_image_embeds_seed_metadata_for_reproducibility(self) -> None:
         source_image = Image.new("RGB", (800, 600), color="green")
         pipeline = FakePipeline(source_image)

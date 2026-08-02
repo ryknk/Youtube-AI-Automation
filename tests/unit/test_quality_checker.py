@@ -94,7 +94,10 @@ class QualityCheckerTests(unittest.TestCase):
             self.assertEqual(image_check.severity.value, "error")
             self.assertIn("画像として読み込めません", image_check.message)
 
-    def test_wrong_resolution_scene_image_is_reported_as_error(self) -> None:
+    def test_wrong_aspect_ratio_low_resolution_scene_image_is_reported_as_error(self) -> None:
+        """シーン画像はscene_sizeへピクセル単位で一致させる必要はない（動画レンダリング時に
+        ffmpegのscaleフィルタで最終解像度へ引き伸ばされるため）。ただしアスペクト比が
+        大きく異なる場合はエラーとして検出されること。"""
         with tempfile.TemporaryDirectory() as temporary_directory:
             project_dir = Path(temporary_directory)
             _write_valid_scene_project(project_dir, image_size=(640, 480))
@@ -104,7 +107,21 @@ class QualityCheckerTests(unittest.TestCase):
 
             image_check = next(check for check in report.checks if check.check_name == "シーン画像")
             self.assertEqual(image_check.severity.value, "error")
-            self.assertIn("解像度が不正です", image_check.message)
+            self.assertIn("アスペクト比が不正です", image_check.message)
+
+    def test_generation_native_resolution_close_to_scene_size_is_accepted(self) -> None:
+        """Qwen-Imageの公式16:9プリセット（1664x928、比率1.793）はscene_size既定値
+        （1920x1080、比率1.778）とピクセル単位では一致しないが、正常な生成結果として
+        許容されること（generate_scene_imagesがscene_sizeへ整形しなくなったための回帰テスト）。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            project_dir = Path(temporary_directory)
+            _write_valid_scene_project(project_dir, image_size=(1664, 928))
+            checker = QualityChecker(QualityRules(10, 1000, 6.0, (), 2), FakeDurationProvider())  # type: ignore[arg-type]
+
+            report = checker.check_project(project_dir, ImagePromptBuilder("realistic"), expected_scene_size=(1920, 1080))
+
+            image_check = next(check for check in report.checks if check.check_name == "シーン画像")
+            self.assertEqual(image_check.severity.value, "pass")
 
     def test_wrong_aspect_ratio_scene_image_is_reported_as_error(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

@@ -237,6 +237,25 @@ class PluginManagerTests(unittest.TestCase):
         self.assertEqual(args[0].model_id, "org/model")
         self.assertEqual(args[0].seed, 7)
         self.assertEqual(args[1], "1920x1080")
+        # シーン画像は動画レンダリング時にffmpegがscene_sizeへ引き伸ばすため、生成時点の
+        # cover-cropは不要（resize_to_output_size=False）。
+        self.assertFalse(provider_class.call_args.kwargs["resize_to_output_size"])
+
+    @patch("youtube_generator.plugins.manager.QwenImageLocalImageProvider")
+    def test_qwen_image_local_provider_created_for_thumbnail_keeps_resize(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        """サムネイルは動画レンダリング側でリサイズされないため、従来どおり
+        thumbnail_sizeへ正確に整形する必要がある（resize_to_output_size=True）。"""
+        manager = PluginManager(Settings(), {"image": "qwen_image_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080", "thumbnail_size": "1280x720",
+            "qwen_image_local": {},
+        }
+
+        manager.create_image_provider(
+            image_settings, RetryPolicy(max_attempts=1), size_setting="thumbnail_size",
+        )
+
+        self.assertTrue(provider_class.call_args.kwargs["resize_to_output_size"])
 
     @patch("youtube_generator.plugins.manager.BFLImageProvider")
     @patch("youtube_generator.plugins.manager.QwenImageLocalImageProvider")
@@ -289,6 +308,21 @@ class PluginManagerTests(unittest.TestCase):
         self.assertEqual(args[0].rank, 128)
         self.assertEqual(args[0].seed, 7)
         self.assertEqual(args[1], "1920x1080")
+        self.assertFalse(provider_class.call_args.kwargs["resize_to_output_size"])
+
+    @patch("youtube_generator.plugins.manager.QwenImageNunchakuLocalImageProvider")
+    def test_qwen_image_nunchaku_local_provider_created_for_thumbnail_keeps_resize(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(), {"image": "qwen_image_nunchaku_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080", "thumbnail_size": "1280x720",
+            "qwen_image_nunchaku_local": {},
+        }
+
+        manager.create_image_provider(
+            image_settings, RetryPolicy(max_attempts=1), size_setting="thumbnail_size",
+        )
+
+        self.assertTrue(provider_class.call_args.kwargs["resize_to_output_size"])
 
     @patch("youtube_generator.plugins.manager.BFLImageProvider")
     @patch("youtube_generator.plugins.manager.QwenImageNunchakuLocalImageProvider")

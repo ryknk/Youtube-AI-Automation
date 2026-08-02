@@ -125,9 +125,17 @@ class QwenImageNunchakuLocalImageProvider(ImageProvider):
     APIキーは不要。nunchakuはCUDA専用の量子化推論カーネルを使うため、CPU実行には対応しない。
     """
 
-    def __init__(self, settings: QwenImageNunchakuLocalSettings, output_size: str) -> None:
+    def __init__(
+        self, settings: QwenImageNunchakuLocalSettings, output_size: str,
+        resize_to_output_size: bool = True,
+    ) -> None:
         self._settings = settings
         self._output_width, self._output_height = self._parse_size(output_size)
+        # シーン画像は動画レンダリング時にffmpegのscaleフィルタで最終解像度へ引き伸ばされるため、
+        # ここでの整形は不要（Falseにして生成解像度のまま保存し、cover-crop分の処理を省略する）。
+        # サムネイル用途はレンダリング側でリサイズされないため、Trueのままthumbnail_sizeへ
+        # 正確に整形する必要がある（PluginManager._create_qwen_image_nunchaku_local_provider参照）。
+        self._resize_to_output_size = resize_to_output_size
         self._pipeline: Any = None
         self._logger = get_logger(__name__)
 
@@ -165,14 +173,14 @@ class QwenImageNunchakuLocalImageProvider(ImageProvider):
         generation_seconds = time.perf_counter() - started_at
 
         image = result.images[0]
-        fitted_image = self._fit_to_output_size(image)
+        fitted_image = self._fit_to_output_size(image) if self._resize_to_output_size else image
         output_file.parent.mkdir(parents=True, exist_ok=True)
         self._save_with_metadata(fitted_image, output_file, seed)
         self._logger.info(
             "Qwen-Image(nunchaku)ローカル画像生成が完了しました: file=%s, generation_seconds=%.2f, "
-            "generated_size=%dx%d, output_size=%dx%d",
+            "generated_size=%dx%d, output_size=%dx%d, resized=%s",
             output_file, generation_seconds, self._settings.width, self._settings.height,
-            self._output_width, self._output_height,
+            self._output_width, self._output_height, self._resize_to_output_size,
         )
 
     def release(self) -> None:

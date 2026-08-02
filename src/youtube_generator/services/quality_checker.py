@@ -279,17 +279,21 @@ class QualityChecker:
                     problems.append(f"{image_file.name}: 画像として読み込めません（{error}）。")
                     continue
                 checked_count += 1
-                if expected_size is not None and size != expected_size:
-                    problems.append(
-                        f"{image_file.name}: 解像度が不正です（{size[0]}x{size[1]}、"
-                        f"期待値{expected_size[0]}x{expected_size[1]}）。"
-                    )
-                    continue
                 if expected_size is not None:
+                    # シーン画像は生成解像度（例: Qwen-Imageの1664x928）のまま保存され、
+                    # 動画レンダリング時にffmpegのscaleフィルタでscene_sizeへ引き伸ばされるため、
+                    # ピクセル数の完全一致は求めない（正常な生成でも一致しなくなった）。
+                    # アスペクト比だけを検査する。許容誤差は、Qwen-Imageの公式16:9プリセット
+                    # （1664x928, 比率1.793）とscene_size既定値（1920x1080, 比率1.778）の差
+                    # （約1.5%）を正常範囲として許容しつつ、向きの取り違え等の明確な不正は
+                    # 検出できるよう0.05（5%）とする。
                     expected_ratio = expected_size[0] / expected_size[1]
                     actual_ratio = size[0] / size[1]
-                    if abs(actual_ratio - expected_ratio) > 0.01:
-                        problems.append(f"{image_file.name}: アスペクト比が不正です。")
+                    if abs(actual_ratio - expected_ratio) > 0.05:
+                        problems.append(
+                            f"{image_file.name}: アスペクト比が不正です（{size[0]}x{size[1]}、"
+                            f"期待比率{expected_ratio:.3f}、実際の比率{actual_ratio:.3f}）。"
+                        )
 
         severity = QualitySeverity.ERROR if problems else QualitySeverity.PASS
         message = "; ".join(problems) if problems else "全シーン画像を確認しました。"

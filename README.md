@@ -608,6 +608,8 @@ image:
 
 `providers.image`は従来どおり単一の文字列（例: `image: bfl`）でも指定でき、その場合はシーン・サムネイル両方に同じプロバイダーが使われます（後方互換）。シーンだけSelf-host、サムネイルはBFL/OpenAIのまま、にする方法もFLUX.1 Schnell Self-hostと同様です（`providers.image`を辞書形式にし、`scene`だけ`qwen_image_local`を指定）。
 
+シーン画像生成用途（`providers.image.scene`）では、生成した画像は`width`/`height`（例: 1664x928）のまま保存され、`scene_size`（例: 1920x1080）への整形は行いません。動画レンダリング時にffmpegの`scale`フィルタで最終解像度へ引き伸ばされるため、生成時点でのリサイズが不要だからです（cover-crop処理の省略により生成の後処理が速くなります）。サムネイル用途（`providers.image.thumbnail`）はレンダリング側でリサイズされないため、従来どおり`thumbnail_size`へ正確に整形されます。
+
 ### VRAM不足時の対処
 
 CUDAメモリ不足時はエラーに`model_id`・`device`・`dtype`・生成サイズ・`cuda_oom=True`と対処法が表示されます。対策例:
@@ -719,6 +721,8 @@ image:
     fallback_provider: null
 ```
 
+シーン画像生成用途では、生成した画像は`width`/`height`（例: 1664x928）のまま保存され、`scene_size`（例: 1920x1080）への整形は行いません（動画レンダリング時にffmpegの`scale`フィルタで最終解像度へ引き伸ばされるため）。サムネイル用途は従来どおり`thumbnail_size`へ正確に整形されます。
+
 ### 生成速度・VRAMについて
 
 具体的な倍率はnunchaku公式ドキュメントに記載がありませんが、以下の環境で実測しました。
@@ -771,7 +775,7 @@ image:
 
 `--edit-images`は`--generate-images`が対象フォルダへ書き出す生成キャッシュキー（`.image_cache_key`）と編集設定からキャッシュキーを組み立てるため、`--generate-images`より先に単独で実行することはできません。編集結果も`cache/`に保存され、生成設定・編集設定のいずれも変わっていなければ再編集をスキップします。
 
-編集時の推論解像度は既定で自動決定されます。シーン画像は生成後に出力解像度（`image.scene_size`、既定1920x1080）へリサイズ済みのため、画像ファイル自体のサイズからは生成時の解像度を復元できません。そこで`providers.image.scene`で選択中の画像生成プロバイダー（`qwen_image_local`/`qwen_image_nunchaku_local`など、`width`/`height`設定を持つものであればどれでも対象）の`width`/`height`設定を自動的に参照し、その（より少ない画素数の）解像度で編集を行います。編集後は編集対象画像と同じ解像度へ戻して保存するため、最終的な出力サイズは変わりません。BFL/OpenAIのように`width`/`height`という概念を持たないプロバイダーを選択している場合は自動決定できず、従来どおり編集対象画像自身の解像度でそのまま推論します。
+編集時の推論解像度は既定で自動決定されます。シーン画像は生成解像度（例: 1664x928）のまま保存されるため、通常は画像ファイル自体のサイズがそのまま編集解像度になりますが、`providers.image.scene`で選択中の画像生成プロバイダー（`qwen_image_local`/`qwen_image_nunchaku_local`など、`width`/`height`設定を持つものであればどれでも対象）の`width`/`height`設定を自動的に参照する仕組みにより、生成側の設定変更に編集側が追従し、config.yaml内での二重管理を避けています。編集後は編集対象画像と同じ解像度へ戻して保存するため、最終的な出力サイズは変わりません。BFL/OpenAIのように`width`/`height`という概念を持たないプロバイダーを選択している場合は自動決定できず、従来どおり編集対象画像自身の解像度でそのまま推論します。
 
 `image.qwen_image_edit_nunchaku_local.width`/`height`を明示的に指定すると、この自動決定より優先されます。
 

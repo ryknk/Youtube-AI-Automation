@@ -155,6 +155,7 @@ class PluginManager:
         qwen_settings = QwenImageLocalSettings.from_mapping(qwen_settings_raw)
         primary: ImageProvider = QwenImageLocalImageProvider(
             qwen_settings, str(image_settings[size_setting]),
+            resize_to_output_size=(size_setting != "scene_size"),
         )
         if qwen_settings.fallback_provider is None:
             return primary
@@ -176,6 +177,7 @@ class PluginManager:
         nunchaku_settings = QwenImageNunchakuLocalSettings.from_mapping(nunchaku_settings_raw)
         primary: ImageProvider = QwenImageNunchakuLocalImageProvider(
             nunchaku_settings, str(image_settings[size_setting]),
+            resize_to_output_size=(size_setting != "scene_size"),
         )
         if nunchaku_settings.fallback_provider is None:
             return primary
@@ -237,10 +239,12 @@ class PluginManager:
         """編集時の推論解像度を、明示指定がなければシーン画像生成プロバイダーの生成解像度
         （width/height）から自動決定する。
 
-        シーン画像は生成後に出力解像度（scene_size）へリサイズ済みのため、画像ファイル自体の
-        サイズからは生成時の解像度を復元できない。そのため生成プロバイダーの設定を直接参照する。
-        BFL/OpenAIのようにwidth/heightという概念を持たないプロバイダーの場合は自動決定できず、
-        従来どおり編集対象画像自身の解像度で推論する（＝widthとheightがNoneのまま）。
+        シーン画像は生成解像度（例: Qwen-Imageの1664x928）のまま保存されるため、通常は
+        画像ファイル自体のサイズ（＝編集の既定の推論解像度）と一致する。この自動決定は、
+        生成プロバイダーの設定変更に編集側の設定を追従させ、config.yaml側での二重管理を
+        避けるためのものである。BFL/OpenAIのようにwidth/heightという概念を持たない
+        プロバイダーの場合は自動決定できず、従来どおり編集対象画像自身の解像度で推論する
+        （＝widthとheightがNoneのまま）。
         """
         if editor_settings_raw.get("width") is not None or editor_settings_raw.get("height") is not None:
             return editor_settings_raw
