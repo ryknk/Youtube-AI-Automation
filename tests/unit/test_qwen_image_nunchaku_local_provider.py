@@ -65,8 +65,10 @@ class FakePipelineResult:
 
 
 class FakePipeline:
-    def __init__(self, source_image: Image.Image, raise_error: Exception | None = None) -> None:
-        self._source_image = source_image
+    def __init__(
+        self, source_image: Image.Image | list[Image.Image], raise_error: Exception | None = None,
+    ) -> None:
+        self._source_images = source_image if isinstance(source_image, list) else [source_image]
         self._raise_error = raise_error
         self.calls: list[dict] = []
         self.model_cpu_offload_calls = 0
@@ -83,7 +85,9 @@ class FakePipeline:
         self.calls.append(kwargs)
         if self._raise_error is not None:
             raise self._raise_error
-        return FakePipelineResult(self._source_image)
+        # 呼び出し回数に応じて画像を切り替える（末尾到達後は最後の画像を使い続ける）。
+        index = min(len(self.calls) - 1, len(self._source_images) - 1)
+        return FakePipelineResult(self._source_images[index])
 
 
 class FakeTransformer:
@@ -167,6 +171,7 @@ class QwenImageNunchakuLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.true_cfg_scale, 4.0)
         self.assertEqual(settings.prompt_suffix, "")
         self.assertIsNone(settings.fallback_provider)
+        self.assertTrue(settings.letterbox_detection_enabled)
 
     def test_from_mapping_reads_all_fields(self) -> None:
         settings = QwenImageNunchakuLocalSettings.from_mapping({
@@ -174,6 +179,7 @@ class QwenImageNunchakuLocalSettingsTests(unittest.TestCase):
             "low_vram_use_pin_memory": True, "low_vram_num_blocks_on_gpu": 2,
             "num_inference_steps": 8, "true_cfg_scale": 2.0, "seed": 5,
             "negative_prompt": "blurry", "prompt_suffix": "Ultra HD, 4K.", "fallback_provider": "BFL",
+            "letterbox_detection_enabled": False,
         })
 
         self.assertEqual(settings.precision, "nvfp4")
@@ -184,6 +190,7 @@ class QwenImageNunchakuLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.seed, 5)
         self.assertEqual(settings.prompt_suffix, "Ultra HD, 4K.")
         self.assertEqual(settings.fallback_provider, "bfl")
+        self.assertFalse(settings.letterbox_detection_enabled)
 
     def test_from_mapping_rejects_invalid_precision(self) -> None:
         with self.assertRaises(ValueError):
@@ -467,6 +474,65 @@ class QwenImageNunchakuLocalImageProviderTests(unittest.TestCase):
                 provider.generate_image("prompt", self.output_file)
 
         self.assertIn("not found", str(context.exception))
+
+    def test_regenerates_with_new_seed_when_letterbox_bars_detected(self) -> None:
+        """レターボックス帯を検出した場合、seed未指定なら別seedで再生成すること。"""
+        letterboxed_image = Image.new("RGB", (800, 600), color=(0, 0, 0))
+        clean_image = Image.new("RGB", (800, 600), color=(120, 140, 160))
+        pipeline = FakePipeline([letterboxed_image, clean_image])
+        transformer_cls = FakeNunchakuTransformerClass(FakeTransformer())
+        torch_module = FakeTorch(cuda_available=True)
+        diffusers_module = FakeDiffusers(pipeline)
+        nunchaku_utils = FakeNunchakuUtils(gpu_memory_gb=24.0)
+        settings = QwenImageNunchakuLocalSettings.from_mapping({"width": 800, "height": 600})
+        provider = QwenImageNunchakuLocalImageProvider(settings, "640x360", resize_to_output_size=False)
+
+        patches = _patch_imports(torch_module, diffusers_module, transformer_cls, nunchaku_utils)
+        with patches[0], patches[1], patches[2]:
+            provider.generate_image("prompt", self.output_file)
+
+        self.assertEqual(len(pipeline.calls), 2)
+        with Image.open(self.output_file) as saved_image:
+            self.assertEqual(saved_image.getpixel((0, 0)), (120, 140, 160))
+
+    def test_fixed_seed_does_not_retry_even_if_letterbox_detected(self) -> None:
+        """seedが固定されている場合は再生成しても同じ画像になるため、検出しても再試行しないこと。"""
+        letterboxed_image = Image.new("RGB", (800, 600), color=(0, 0, 0))
+        pipeline = FakePipeline(letterboxed_image)
+        transformer_cls = FakeNunchakuTransformerClass(FakeTransformer())
+        torch_module = FakeTorch(cuda_available=True)
+        diffusers_module = FakeDiffusers(pipeline)
+        nunchaku_utils = FakeNunchakuUtils(gpu_memory_gb=24.0)
+        provider = QwenImageNunchakuLocalImageProvider(self.settings, "640x360", resize_to_output_size=False)
+
+        patches = _patch_imports(torch_module, diffusers_module, transformer_cls, nunchaku_utils)
+        with patches[0], patches[1], patches[2]:
+            provider.generate_image("prompt", self.output_file)
+
+        self.assertEqual(len(pipeline.calls), 1)
+        with Image.open(self.output_file) as saved_image:
+            self.assertEqual(saved_image.getpixel((0, 0)), (0, 0, 0))
+
+    def test_letterbox_detection_disabled_skips_retry(self) -> None:
+        """letterbox_detection_enabled=falseの場合、検出しても再生成せず1回のみ生成すること。"""
+        letterboxed_image = Image.new("RGB", (800, 600), color=(0, 0, 0))
+        pipeline = FakePipeline(letterboxed_image)
+        transformer_cls = FakeNunchakuTransformerClass(FakeTransformer())
+        torch_module = FakeTorch(cuda_available=True)
+        diffusers_module = FakeDiffusers(pipeline)
+        nunchaku_utils = FakeNunchakuUtils(gpu_memory_gb=24.0)
+        settings = QwenImageNunchakuLocalSettings.from_mapping({
+            "width": 800, "height": 600, "letterbox_detection_enabled": False,
+        })
+        provider = QwenImageNunchakuLocalImageProvider(settings, "640x360", resize_to_output_size=False)
+
+        patches = _patch_imports(torch_module, diffusers_module, transformer_cls, nunchaku_utils)
+        with patches[0], patches[1], patches[2]:
+            provider.generate_image("prompt", self.output_file)
+
+        self.assertEqual(len(pipeline.calls), 1)
+        with Image.open(self.output_file) as saved_image:
+            self.assertEqual(saved_image.getpixel((0, 0)), (0, 0, 0))
 
     def test_release_clears_loaded_pipeline_and_frees_cuda_memory(self) -> None:
         source_image = Image.new("RGB", (800, 600))

@@ -70,8 +70,10 @@ class FakePipelineResult:
 
 
 class FakePipeline:
-    def __init__(self, source_image: Image.Image, raise_error: Exception | None = None) -> None:
-        self._source_image = source_image
+    def __init__(
+        self, source_image: Image.Image | list[Image.Image], raise_error: Exception | None = None,
+    ) -> None:
+        self._source_images = source_image if isinstance(source_image, list) else [source_image]
         self._raise_error = raise_error
         self.calls: list[dict] = []
         self.to_calls: list[str] = []
@@ -92,7 +94,9 @@ class FakePipeline:
         self.calls.append(kwargs)
         if self._raise_error is not None:
             raise self._raise_error
-        return FakePipelineResult(self._source_image)
+        # 呼び出し回数に応じて画像を切り替える（末尾到達後は最後の画像を使い続ける）。
+        index = min(len(self.calls) - 1, len(self._source_images) - 1)
+        return FakePipelineResult(self._source_images[index])
 
 
 class FakeDiffusionPipelineClass:
@@ -130,6 +134,7 @@ class QwenImageLocalSettingsTests(unittest.TestCase):
         self.assertIsNone(settings.seed)
         self.assertIsNone(settings.fallback_provider)
         self.assertFalse(settings.allow_cpu)
+        self.assertTrue(settings.letterbox_detection_enabled)
 
     def test_from_mapping_reads_all_fields(self) -> None:
         settings = QwenImageLocalSettings.from_mapping({
@@ -139,6 +144,7 @@ class QwenImageLocalSettingsTests(unittest.TestCase):
             "enable_cpu_offload": True,
             "enable_attention_slicing": True, "low_vram_mode": True,
             "model_cache_dir": "/tmp/cache", "allow_cpu": True, "fallback_provider": "BFL",
+            "letterbox_detection_enabled": False,
         })
 
         self.assertEqual(settings.model_id, "org/model")
@@ -151,6 +157,7 @@ class QwenImageLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.prompt_suffix, "Ultra HD, 4K.")
         self.assertEqual(settings.fallback_provider, "bfl")
         self.assertTrue(settings.allow_cpu)
+        self.assertFalse(settings.letterbox_detection_enabled)
 
     def test_from_mapping_rejects_invalid_device(self) -> None:
         with self.assertRaises(ValueError):
@@ -297,6 +304,59 @@ class QwenImageLocalImageProviderTests(unittest.TestCase):
 
         self.assertEqual(diffusers_module.DiffusionPipeline.from_pretrained_calls, 1)
         self.assertEqual(len(pipeline.calls), 2)
+
+    def test_regenerates_with_new_seed_when_letterbox_bars_detected(self) -> None:
+        """レターボックス帯を検出した場合、seed未指定なら別seedで再生成すること。"""
+        letterboxed_image = Image.new("RGB", (800, 600), color=(0, 0, 0))
+        clean_image = Image.new("RGB", (800, 600), color=(120, 140, 160))
+        pipeline = FakePipeline([letterboxed_image, clean_image])
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        settings = QwenImageLocalSettings.from_mapping({"allow_cpu": True, "width": 800, "height": 600})
+        provider = QwenImageLocalImageProvider(settings, "640x360", resize_to_output_size=False)
+
+        with patch.object(QwenImageLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(QwenImageLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("prompt", self.output_file)
+
+        self.assertEqual(len(pipeline.calls), 2)
+        with Image.open(self.output_file) as saved_image:
+            self.assertEqual(saved_image.getpixel((0, 0)), (120, 140, 160))
+
+    def test_fixed_seed_does_not_retry_even_if_letterbox_detected(self) -> None:
+        """seedが固定されている場合は再生成しても同じ画像になるため、検出しても再試行しないこと。"""
+        letterboxed_image = Image.new("RGB", (800, 600), color=(0, 0, 0))
+        pipeline = FakePipeline(letterboxed_image)
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        provider = QwenImageLocalImageProvider(self.settings, "640x360", resize_to_output_size=False)
+
+        with patch.object(QwenImageLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(QwenImageLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("prompt", self.output_file)
+
+        self.assertEqual(len(pipeline.calls), 1)
+        with Image.open(self.output_file) as saved_image:
+            self.assertEqual(saved_image.getpixel((0, 0)), (0, 0, 0))
+
+    def test_letterbox_detection_disabled_skips_retry(self) -> None:
+        """letterbox_detection_enabled=falseの場合、検出しても再生成せず1回のみ生成すること。"""
+        letterboxed_image = Image.new("RGB", (800, 600), color=(0, 0, 0))
+        pipeline = FakePipeline(letterboxed_image)
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        settings = QwenImageLocalSettings.from_mapping({
+            "allow_cpu": True, "width": 800, "height": 600, "letterbox_detection_enabled": False,
+        })
+        provider = QwenImageLocalImageProvider(settings, "640x360", resize_to_output_size=False)
+
+        with patch.object(QwenImageLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(QwenImageLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("prompt", self.output_file)
+
+        self.assertEqual(len(pipeline.calls), 1)
+        with Image.open(self.output_file) as saved_image:
+            self.assertEqual(saved_image.getpixel((0, 0)), (0, 0, 0))
 
     def test_release_clears_loaded_pipeline_and_frees_cuda_memory(self) -> None:
         source_image = Image.new("RGB", (800, 600), color="black")

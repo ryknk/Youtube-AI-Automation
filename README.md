@@ -411,6 +411,28 @@ image:
 
 FLUX.1 Schnellはguidance_scale=0.0の蒸留モデルのため`negative_prompt`が効かず、BFL APIも`negative_prompt`相当のパラメータを持たないため、いずれもポジティブプロンプトへの追記という同じ方式で実装しています。
 
+## レターボックス帯（黒帯）の自動検出・再生成（qwen_image_local / qwen_image_nunchaku_local）
+
+Qwen-Imageは、ワイド画面のイラスト生成を指示した際に、プロンプト・`negative_prompt`での抑制だけでは防ぎきれず、まれに学習データ由来の「アニメ動画スクリーンショット」的な構図（上下に黒帯＋文字化けした字幕/タイトル風の文字）を生成することがあります。この問題には3段構えで対策しています。
+
+1. **ポジティブプロンプト（`templates/<template>/image_prompt.txt`）**: 各テンプレートのスタイル記述へ「動画のワンシーンではなく、スタンドアロンのポスター調イラストである」旨を明示する文言を追加しています。`image_prompt_builder.py`は全テンプレート共通の骨組みを組み立てるだけの共通部品のため、ジャンル固有の対策文言はここではなくテンプレート側に持たせています（`CLAUDE.md`の「テンプレートごとの差分はtemplates/<template>のみで表現する」方針に合わせています）。
+2. **negative_prompt（`qwen_image_local`/`qwen_image_nunchaku_local`）**: `anime screenshot, episode preview card, title card, broadcast slate, next episode preview`等、アニメ動画スクリーンショット特有の語を追加しています。また、`characters`が人物（登場人物）と誤解され意図せず人物描写を抑制するリスクがあったため、`text characters`と明示するよう整理しました。
+3. **生成後の自動検出・再生成**（本節の内容）。
+
+これを軽減するため、`qwen_image_local`/`qwen_image_nunchaku_local`は生成直後の画像の上端・下端を検査し、単色に近い黒帯を検出した場合は自動的に**別seedで1回だけ再生成**します（`src/youtube_generator/services/image_artifact_detector.py`）。再生成後も検出された場合は、警告ログを出力したうえでその画像をそのまま使用します（動画生成自体は停止しません）。
+
+```yaml
+image:
+  qwen_image_local:
+    letterbox_detection_enabled: true  # falseで検出・再生成を無効化（常に1回のみ生成）
+  qwen_image_nunchaku_local:
+    letterbox_detection_enabled: true
+```
+
+- 既定は`true`（有効）です。`false`にすると検出・再生成を一切行わず、常に1回のみ生成します。
+- `seed`をconfig.yamlで固定している場合は、`letterbox_detection_enabled: true`でも再生成しても同じ画像になるため対象外です（検出時は警告ログのみ）。
+- 判定は画像統計（上下端の輝度・ムラ）による簡易的なヒューリスティックのため、稀に自然な単色暗部（無地の暗い壁等）を誤検出し不要な再生成が発生する場合があります。誤検出時のコストは生成時間の増加のみで、出力内容が壊れることはありません。
+
 ## ローカルSelf-host画像生成の動作確認・テスト生成
 
 以下のコマンドは、`providers.image`（またはproviders.image.scene）で選択中のSelf-hostプロバイダー（`flux_schnell_local` / `qwen_image_local` / `qwen_image_nunchaku_local`）に対して共通で動作します。個別のプロバイダーごとに別コマンドはありません。

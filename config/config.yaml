@@ -17,7 +17,7 @@ providers:
   tts: voicevox
   # 画像生成のプロバイダー
   image:
-    scene: qwen_image_nunchaku_local
+    scene: qwen_image_local
     thumbnail: bfl
 
 # テキスト生成モデルの設定
@@ -179,8 +179,8 @@ image:
     # 字幕・キャプション風の文字が画面内へ写り込む問題を抑えるため、公式既定値より
     # 引き上げてnegative_promptへの追従を強めている（上げすぎると彩度・コントラストが
     # 過剰になる副作用があるため、6.0〜7.0程度を目安にする）。
-    num_inference_steps: 50
-    true_cfg_scale: 6.0
+    num_inference_steps: 20
+    true_cfg_scale: 4.0
     # モデルへ渡す生成サイズ（scene_size/thumbnail_sizeとは独立）。シーン画像生成用途では
     # この解像度のまま保存され、scene_size（例:1920x1080）への整形は行わない（動画レンダリング時に
     # ffmpegのscaleフィルタで最終解像度へ引き伸ばされるため）。サムネイル用途ではレンダリング側で
@@ -193,9 +193,13 @@ image:
     # 写り込む問題への対策としてtrue negative guidanceを指定。特定の言語（日本語・中国語等）に
     # 限定せず、あらゆる言語の文字・記号を対象とする（プロンプトから元の日本語文を除いても、
     # モデルが文字の見た目だけをハルシネーションで生成し、言語が中国語風に化けることがあるため）。
-    # letterbox/black bars関連は、prompt_suffixの"cinematic"という単語が誘発している疑いが強い
-    # （実例で上下黒帯＋"16:9,"という文字列がそのまま描画される事例を確認）ため、こちらでも抑制する。
-    negative_prompt: "watermark, logo, YouTube logo, brand logo, text overlay, on-screen text, subtitle, caption, any text, written words, letters, characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
+    # "characters"は人物（登場人物）と誤解されるリスクがあるため"text characters"と明示している。
+    # アニメ調イラストが、学習データ由来のアニメ動画スクリーンショット（黒帯＋タイトルカード風の
+    # 文字）を誤って再現する既知の傾向があるため、anime screenshot/episode preview card等の
+    # 語も追加。ポジティブプロンプト側でも「動画のワンシーンではなくスタンドアロンのイラストで
+    # ある」旨を明示しており、両輪で対策している（テンプレート差分のためtemplates/<template>/
+    # image_prompt.txt側に記載。image_prompt_builder.pyは共通部品のため汎用的な内容のみ）。
+    negative_prompt: "watermark, logo, YouTube logo, brand logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
@@ -211,6 +215,10 @@ image:
     allow_cpu: false
     # 明示しない限りAPIへは自動フォールバックしない（意図しないAPI課金を防止）。例: bfl / openai
     fallback_provider: null
+    # 生成画像の上下端に黒帯（レターボックス）を検出した場合、別seedで自動再生成するか。
+    # falseにすると検出・再生成を行わず常に1回のみ生成する（seedを固定している場合は
+    # 再生成しても同じ画像になるため、trueでも検出時は警告ログのみで再生成しない）。
+    letterbox_detection_enabled: false
   # Qwen-Image nunchaku(SVDQuant 4bit量子化)版 Self-host（ローカルGPU実行）用の設定。
   # providers.image（またはproviders.image.scene/thumbnail）を qwen_image_nunchaku_local に
   # した場合のみ使用される。CUDA専用（CPU実行は非対応）。詳細はREADME.mdの
@@ -222,7 +230,7 @@ image:
     # （Blackwell/50シリーズはnvfp4、それ以外はint4）。int4 / nvfp4 も明示指定可。
     precision: auto
     # 32: 高速（軽量） / 128: 高品質（重い）
-    rank: 128
+    rank: 32
     # 公式サンプルのしきい値（GB）。GPU VRAMがこれを超える場合はenable_model_cpu_offload、
     # 以下の場合はtransformer.set_offload+enable_sequential_cpu_offloadを使う。
     offload_threshold_gb: 18.0
@@ -236,7 +244,7 @@ image:
     # 画面内へ写り込む問題を抑えるため、公式既定値より引き上げてnegative_promptへの
     # 追従を強めている（上げすぎると彩度・コントラストが過剰になる副作用があるため、
     # 6.0〜7.0程度を目安にする）。
-    true_cfg_scale: 6.0
+    true_cfg_scale: 4.0
     # モデルへ渡す生成サイズ（scene_size/thumbnail_sizeとは独立）。シーン画像生成用途では
     # この解像度のまま保存され、scene_size（例:1920x1080）への整形は行わない（動画レンダリング時に
     # ffmpegのscaleフィルタで最終解像度へ引き伸ばされるため）。サムネイル用途ではレンダリング側で
@@ -249,9 +257,13 @@ image:
     # 写り込む問題への対策としてtrue negative guidanceを指定。特定の言語（日本語・中国語等）に
     # 限定せず、あらゆる言語の文字・記号を対象とする（プロンプトから元の日本語文を除いても、
     # モデルが文字の見た目だけをハルシネーションで生成し、言語が中国語風に化けることがあるため）。
-    # letterbox/black bars関連は、prompt_suffixの"cinematic"という単語が誘発している疑いが強い
-    # （実例で上下黒帯＋"16:9,"という文字列がそのまま描画される事例を確認）ため、こちらでも抑制する。
-    negative_prompt: "watermark, logo, YouTube logo, brand logo, text overlay, on-screen text, subtitle, caption, any text, written words, letters, characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
+    # "characters"は人物（登場人物）と誤解されるリスクがあるため"text characters"と明示している。
+    # アニメ調イラストが、学習データ由来のアニメ動画スクリーンショット（黒帯＋タイトルカード風の
+    # 文字）を誤って再現する既知の傾向があるため、anime screenshot/episode preview card等の
+    # 語も追加。ポジティブプロンプト側でも「動画のワンシーンではなくスタンドアロンのイラストで
+    # ある」旨を明示しており、両輪で対策している（テンプレート差分のためtemplates/<template>/
+    # image_prompt.txt側に記載。image_prompt_builder.pyは共通部品のため汎用的な内容のみ）。
+    negative_prompt: "watermark, logo, YouTube logo, brand logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
@@ -262,6 +274,10 @@ image:
     model_cache_dir: huggingface\model_cache\Qwen-Image-nunchaku
     # 明示しない限りAPIへは自動フォールバックしない（意図しないAPI課金を防止）。例: bfl / openai
     fallback_provider: null
+    # 生成画像の上下端に黒帯（レターボックス）を検出した場合、別seedで自動再生成するか。
+    # falseにすると検出・再生成を行わず常に1回のみ生成する（seedを固定している場合は
+    # 再生成しても同じ画像になるため、trueでも検出時は警告ログのみで再生成しない）。
+    letterbox_detection_enabled: false
 
 # 台本のシーン分割設定
 scenes:

@@ -17,11 +17,15 @@ from PIL.PngImagePlugin import PngInfo
 from youtube_generator.exceptions import ImageGenerationError
 from youtube_generator.logger import get_logger
 from youtube_generator.plugins.base.image_provider import ImageProvider
+from youtube_generator.services.image_artifact_detector import has_letterbox_bars
 
 
 DEFAULT_MODEL_ID = "Qwen/Qwen-Image"
 _ALLOWED_DEVICES = {"auto", "cuda", "cpu", "mps"}
 _ALLOWED_DTYPES = {"auto", "float16", "bfloat16", "float32"}
+# レターボックス帯（上下の黒帯）を検出した場合の再生成回数上限（初回+再試行1回）。
+# seedが固定されている場合は再生成しても同じ画像になるため対象外（generate_image参照）。
+_MAX_LETTERBOX_REGENERATION_ATTEMPTS = 2
 _INSTALL_HINT = (
     "Self-host画像生成にはqwen-image-local用の任意依存関係が必要です。"
     "`pip install -r requirements-qwen-image-local.txt` または `pip install .[qwen-image-local]` を実行してください。"
@@ -54,6 +58,9 @@ class QwenImageLocalSettings:
     model_cache_dir: str | None = None
     allow_cpu: bool = False
     fallback_provider: str | None = None
+    # 生成画像の上下端に黒帯（レターボックス）を検出した場合、別seedで自動再生成するか。
+    # falseにすると検出・再生成を一切行わず、常に1回のみ生成する。
+    letterbox_detection_enabled: bool = True
 
     @classmethod
     def from_mapping(cls, values: dict[str, Any]) -> "QwenImageLocalSettings":
@@ -85,6 +92,7 @@ class QwenImageLocalSettings:
                 model_cache_dir=str(model_cache_dir) if model_cache_dir else None,
                 allow_cpu=bool(values.get("allow_cpu", False)),
                 fallback_provider=str(fallback_provider).lower() if fallback_provider else None,
+                letterbox_detection_enabled=bool(values.get("letterbox_detection_enabled", True)),
             )
         except (TypeError, ValueError) as error:
             raise ValueError(f"config.yaml の image.qwen_image_local 設定が不正です: {error}") from error
@@ -119,40 +127,62 @@ class QwenImageLocalImageProvider(ImageProvider):
         effective_prompt = self._apply_prompt_suffix(prompt)
         torch = self._import_torch()
         pipeline = self._ensure_pipeline()
-        seed = self._settings.seed if self._settings.seed is not None else random.randint(0, 2**31 - 1)
-        generator = torch.Generator(device=self._generator_device()).manual_seed(seed)
-        self._logger.info(
-            "Qwen-Imageローカル画像生成を開始します: model_id=%s, device=%s, dtype=%s, "
-            "steps=%d, true_cfg_scale=%s, size=%dx%d, seed=%d",
-            self._settings.model_id, self._resolved_device, self._resolved_dtype,
-            self._settings.num_inference_steps, self._settings.true_cfg_scale,
-            self._settings.width, self._settings.height, seed,
-        )
-        generation_kwargs: dict[str, Any] = {
-            "prompt": effective_prompt,
-            "negative_prompt": self._settings.negative_prompt,
-            "width": self._settings.width,
-            "height": self._settings.height,
-            "num_inference_steps": self._settings.num_inference_steps,
-            "true_cfg_scale": self._settings.true_cfg_scale,
-            "generator": generator,
-        }
 
-        started_at = time.perf_counter()
-        try:
-            result = pipeline(**generation_kwargs)
-        except Exception as error:  # diffusers/torch側の例外は多様なため広く捕捉する
-            raise self._wrap_generation_error(error, torch) from error
-        generation_seconds = time.perf_counter() - started_at
+        # seedが固定されている場合は再生成しても同じ画像になるため、レターボックス帯検出時の
+        # 再試行はletterbox_detection_enabled=trueかつseedが未指定（毎回ランダム）の場合のみ行う。
+        detection_enabled = self._settings.letterbox_detection_enabled
+        max_attempts = _MAX_LETTERBOX_REGENERATION_ATTEMPTS if detection_enabled and self._settings.seed is None else 1
+        total_generation_seconds = 0.0
+        for attempt in range(1, max_attempts + 1):
+            seed = self._settings.seed if self._settings.seed is not None else random.randint(0, 2**31 - 1)
+            generator = torch.Generator(device=self._generator_device()).manual_seed(seed)
+            self._logger.info(
+                "Qwen-Imageローカル画像生成を開始します: model_id=%s, device=%s, dtype=%s, "
+                "steps=%d, true_cfg_scale=%s, size=%dx%d, seed=%d, attempt=%d/%d",
+                self._settings.model_id, self._resolved_device, self._resolved_dtype,
+                self._settings.num_inference_steps, self._settings.true_cfg_scale,
+                self._settings.width, self._settings.height, seed, attempt, max_attempts,
+            )
+            generation_kwargs: dict[str, Any] = {
+                "prompt": effective_prompt,
+                "negative_prompt": self._settings.negative_prompt,
+                "width": self._settings.width,
+                "height": self._settings.height,
+                "num_inference_steps": self._settings.num_inference_steps,
+                "true_cfg_scale": self._settings.true_cfg_scale,
+                "generator": generator,
+            }
 
-        image = result.images[0]
+            started_at = time.perf_counter()
+            try:
+                result = pipeline(**generation_kwargs)
+            except Exception as error:  # diffusers/torch側の例外は多様なため広く捕捉する
+                raise self._wrap_generation_error(error, torch) from error
+            total_generation_seconds += time.perf_counter() - started_at
+            image = result.images[0]
+
+            if detection_enabled and has_letterbox_bars(image):
+                if attempt < max_attempts:
+                    self._logger.warning(
+                        "上下端に黒帯（レターボックス）の疑いがある画像を検出したため、"
+                        "別seedで再生成します: file=%s, attempt=%d/%d, seed=%d",
+                        output_file, attempt, max_attempts, seed,
+                    )
+                    continue
+                self._logger.warning(
+                    "上下端に黒帯（レターボックス）の疑いがある画像ですが、再試行回数の上限に"
+                    "達したためそのまま使用します: file=%s, seed=%d",
+                    output_file, seed,
+                )
+            break
+
         fitted_image = self._fit_to_output_size(image) if self._resize_to_output_size else image
         output_file.parent.mkdir(parents=True, exist_ok=True)
         self._save_with_metadata(fitted_image, output_file, seed)
         self._logger.info(
             "Qwen-Imageローカル画像生成が完了しました: file=%s, generation_seconds=%.2f, "
             "generated_size=%dx%d, output_size=%dx%d, resized=%s",
-            output_file, generation_seconds, self._settings.width, self._settings.height,
+            output_file, total_generation_seconds, self._settings.width, self._settings.height,
             self._output_width, self._output_height, self._resize_to_output_size,
         )
 
