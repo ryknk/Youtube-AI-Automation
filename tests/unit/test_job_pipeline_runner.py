@@ -60,6 +60,7 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
             (Path(arguments[1]) / "scene01.png").write_bytes(b"image")
             if on_line is not None:
                 on_line("2026-01-01 00:00:00,000 | INFO | youtube_generator.app.generate_scene_images | 画像生成: (1/1)")
+                on_line("2026-01-01 00:00:01,000 | INFO | youtube_generator.app.generate_scene_images | 画像編集: (1/1)")
         elif command == "--generate-subtitles":
             (Path(arguments[1]) / "subtitles.srt").write_text(
                 "1\n00:00:00,000 --> 00:00:01,000\nテスト\n", encoding="utf-8",
@@ -129,7 +130,8 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
 
         self._run_pipeline(on_progress=progress_messages.append)
 
-        self.assertEqual(progress_messages, ["画像生成: (1/1)"])
+        # 生成の進捗（画像生成）だけでなく、編集ステップの進捗（画像編集）も転送されること。
+        self.assertEqual(progress_messages, ["画像生成: (1/1)", "画像編集: (1/1)"])
 
     def test_run_invoked_with_expected_arguments_per_stage(self) -> None:
         self._run_pipeline()

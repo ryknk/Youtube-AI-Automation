@@ -73,6 +73,23 @@ class JobManagerTests(unittest.TestCase):
             self.assertEqual(manager.get(completed.job_id).status, JobStatus.COMPLETED)
             self.assertEqual(manager.retry(failed.job_id).status, JobStatus.PENDING)
 
+    def test_failure_is_logged_so_it_is_visible_without_querying_the_database(self) -> None:
+        """run_pendingが例外をDBのerror_messageへ記録するだけで、コンソール/ログファイルへ
+        一切出力しない問題（queue run実行時に何も表示されず失敗する）の回帰テスト。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            manager = JobManager(root / "jobs.db", root / "output" / "jobs")
+            job = manager.add("失敗", "trivia")
+
+            def processor(job, update_stage):  # type: ignore[no-untyped-def]
+                raise RuntimeError("画像生成に失敗しました")
+
+            with self.assertLogs("youtube_generator.jobs.manager", level="ERROR") as logs:
+                manager.run_pending(processor, stop_on_error=False)
+
+            messages = [record.getMessage() for record in logs.records]
+            self.assertTrue(any(job.job_id in message for message in messages))
+
     def test_recover_interrupted_job(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             manager = JobManager(Path(temporary_directory) / "jobs.db", Path(temporary_directory) / "jobs")

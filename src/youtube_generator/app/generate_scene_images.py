@@ -75,11 +75,24 @@ class GenerateSceneImagesUseCase:
             prompt = self._prompt_builder.build(prompt_source)
             image_file = scene_file.with_name(f"{scene_file.stem}_{sub_index:02d}.png")
             self._image_generator.generate_image(prompt, image_file)
-            if self._image_editor is not None:
-                self._image_editor.edit(image_file)
             image_files.append(image_file)
             self._logger.info("画像生成: (%d/%d)", progress, total)
+
+        if self._image_editor is not None:
+            # 生成用モデルを解放してから編集用モデルをロードする。両方を同時にVRAMへ
+            # 乗せようとすると、1枚ごとに交互ロードする方式ではVRAM不足になりうるため、
+            # 「全画像生成→生成Provider解放→全画像編集」の2段階に分離している。
+            self._release_if_supported(self._image_generator)
+            for progress, image_file in enumerate(image_files, 1):
+                self._image_editor.edit(image_file)
+                self._logger.info("画像編集: (%d/%d)", progress, total)
         return tuple(image_files)
+
+    @staticmethod
+    def _release_if_supported(provider: object) -> None:
+        release = getattr(provider, "release", None)
+        if callable(release):
+            release()
 
     def _describe_scenes(self, narration_texts: tuple[str, ...]) -> tuple[str, ...]:
         """設定されていれば動画1本分をまとめて1回のAPI呼び出しで英語の場面説明へ変換し、

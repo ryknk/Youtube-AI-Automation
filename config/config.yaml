@@ -176,16 +176,19 @@ image:
     height: 928
     # nullの場合は毎回ランダムなseedを使用し、実際に使用したseedをログ・画像メタデータへ記録する
     seed: null
-    # YouTubeロゴ・UI風の透かしや額縁構図、字幕・キャプション風の文字が写り込む問題への対策として
-    # true negative guidanceを指定。特定の言語（日本語・中国語等）に限定せず、あらゆる言語の文字・
-    # 記号を対象とする（プロンプトから元の日本語文を除いても、モデルが文字の見た目だけを
-    # ハルシネーションで生成し、言語が中国語風に化けることがあるため）。
-    negative_prompt: "watermark, logo, YouTube logo, brand logo, text overlay, on-screen text, subtitle, caption, any text, written words, letters, characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen"
+    # YouTubeロゴ・UI風の透かしや額縁構図、字幕・キャプション風の文字、レターボックス帯が
+    # 写り込む問題への対策としてtrue negative guidanceを指定。特定の言語（日本語・中国語等）に
+    # 限定せず、あらゆる言語の文字・記号を対象とする（プロンプトから元の日本語文を除いても、
+    # モデルが文字の見た目だけをハルシネーションで生成し、言語が中国語風に化けることがあるため）。
+    # letterbox/black bars関連は、prompt_suffixの"cinematic"という単語が誘発している疑いが強い
+    # （実例で上下黒帯＋"16:9,"という文字列がそのまま描画される事例を確認）ため、こちらでも抑制する。
+    negative_prompt: "watermark, logo, YouTube logo, brand logo, text overlay, on-screen text, subtitle, caption, any text, written words, letters, characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
     # 文字描画を防ぐ制約など。
-    prompt_suffix: "Ultra HD, 4K, cinematic composition."
+    # "cinematic"はレターボックス帯（上下の黒帯）を誘発する疑いがあるため意図的に外している。
+    prompt_suffix: "Ultra HD, 4K, sharp focus."
     enable_cpu_offload: false
     enable_attention_slicing: false
     low_vram_mode: true
@@ -226,16 +229,19 @@ image:
     height: 928
     # nullの場合は毎回ランダムなseedを使用し、実際に使用したseedをログ・画像メタデータへ記録する
     seed: null
-    # YouTubeロゴ・UI風の透かしや額縁構図、字幕・キャプション風の文字が写り込む問題への対策として
-    # true negative guidanceを指定。特定の言語（日本語・中国語等）に限定せず、あらゆる言語の文字・
-    # 記号を対象とする（プロンプトから元の日本語文を除いても、モデルが文字の見た目だけを
-    # ハルシネーションで生成し、言語が中国語風に化けることがあるため）。
-    negative_prompt: "watermark, logo, YouTube logo, brand logo, text overlay, on-screen text, subtitle, caption, any text, written words, letters, characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen"
+    # YouTubeロゴ・UI風の透かしや額縁構図、字幕・キャプション風の文字、レターボックス帯が
+    # 写り込む問題への対策としてtrue negative guidanceを指定。特定の言語（日本語・中国語等）に
+    # 限定せず、あらゆる言語の文字・記号を対象とする（プロンプトから元の日本語文を除いても、
+    # モデルが文字の見た目だけをハルシネーションで生成し、言語が中国語風に化けることがあるため）。
+    # letterbox/black bars関連は、prompt_suffixの"cinematic"という単語が誘発している疑いが強い
+    # （実例で上下黒帯＋"16:9,"という文字列がそのまま描画される事例を確認）ため、こちらでも抑制する。
+    negative_prompt: "watermark, logo, YouTube logo, brand logo, text overlay, on-screen text, subtitle, caption, any text, written words, letters, characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
     # 文字描画を防ぐ制約など。
-    prompt_suffix: "Ultra HD, 4K, cinematic composition."
+    # "cinematic"はレターボックス帯（上下の黒帯）を誘発する疑いがあるため意図的に外している。
+    prompt_suffix: "Ultra HD, 4K, sharp focus."
     # nullの場合はHugging Faceの既定キャッシュ（%USERPROFILE%\.cache\huggingface\hub）を使用する
     model_cache_dir: huggingface\model_cache\Qwen-Image-nunchaku
     # 明示しない限りAPIへは自動フォールバックしない（意図しないAPI課金を防止）。例: bfl / openai

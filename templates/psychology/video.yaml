@@ -2,7 +2,7 @@ display_name: 心理学
 scene_structure: [悩みの提示, 心理学的背景, 実践例, まとめ]
 subtitles:
   font: Arial
-  size: 28
+  size: 24
   color: "&H00FFFFFF"
   segmentation_mode: semantic
   max_lines: 2
@@ -15,7 +15,7 @@ subtitles:
   bottom_margin: 20
   box_enabled: true
   background_color: "#000000"
-  background_opacity: 0.8
+  background_opacity: 0.75
 bgm:
   enabled: true
   render_mode: per_section

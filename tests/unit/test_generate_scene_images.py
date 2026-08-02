@@ -14,10 +14,14 @@ from youtube_generator.services.retry import RetryPolicy
 class MockImageProvider:
     def __init__(self) -> None:
         self.prompts: list[str] = []
+        self.release_calls = 0
 
     def generate_image(self, prompt: str, output_file: Path) -> None:
         self.prompts.append(prompt)
         output_file.write_bytes(b"fake-png")
+
+    def release(self) -> None:
+        self.release_calls += 1
 
 
 class FakeImageData:
@@ -145,6 +149,48 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
             self.assertEqual(editor.edited_files, list(image_files))
             for image_file in image_files:
                 self.assertEqual(image_file.read_bytes(), b"edited-png")
+
+    def test_image_editor_runs_only_after_generator_is_released(self) -> None:
+        """生成モデルと編集モデルを同時にVRAMへ乗せないよう、全画像生成→解放→全画像編集の
+        順で実行されることを確認する（1枚ごとの交互ロードはVRAM不足を招くため禁止）。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            events: list[str] = []
+
+            class TrackingImageProvider(MockImageProvider):
+                def generate_image(self, prompt: str, output_file: Path) -> None:
+                    events.append(f"generate:{output_file.name}")
+                    super().generate_image(prompt, output_file)
+
+                def release(self) -> None:
+                    events.append("release")
+                    super().release()
+
+            class TrackingImageEditor(FakeImageEditor):
+                def edit(self, image_file: Path) -> None:
+                    events.append(f"edit:{image_file.name}")
+                    super().edit(image_file)
+
+            generator = TrackingImageProvider()
+            editor = TrackingImageEditor()
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("style"), generator,
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+                image_editor=editor,
+            )
+
+            use_case.execute(scenes_dir)
+
+            self.assertEqual(
+                events,
+                [
+                    "generate:scene01_01.png", "generate:scene02_01.png", "release",
+                    "edit:scene01_01.png", "edit:scene02_01.png",
+                ],
+            )
+            self.assertEqual(generator.release_calls, 1)
 
     def test_without_image_editor_generated_image_is_left_untouched(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

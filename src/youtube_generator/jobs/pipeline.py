@@ -12,9 +12,9 @@ from youtube_generator.config import PROJECT_ROOT, load_settings
 from youtube_generator.jobs.manager import Job, JobStage
 from youtube_generator.services.template_service import TemplateManager
 
-# generate_scene_images.pyが出力する進捗ログ（例: 画像生成: (3/10)）を
+# generate_scene_images.pyが出力する進捗ログ（例: 画像生成: (3/10) / 画像編集: (3/10)）を
 # サブプロセス出力から抽出し、キュー側の進捗通知へ転送するためのパターン。
-_IMAGE_PROGRESS_PATTERN = re.compile(r"画像生成: \(\d+/\d+\)")
+_IMAGE_PROGRESS_PATTERN = re.compile(r"画像(生成|編集): \(\d+/\d+\)")
 
 
 class ExistingPipelineRunner:

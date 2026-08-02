@@ -12,6 +12,8 @@ from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
 
+from youtube_generator.logger import get_logger
+
 
 class JobStatus(StrEnum):
     PENDING = "PENDING"
@@ -63,6 +65,7 @@ class JobManager:
         self._database_file = database_file
         self._jobs_output_dir = jobs_output_dir
         self._output_directory_factory = output_directory_factory
+        self._logger = get_logger(__name__)
         database_file.parent.mkdir(parents=True, exist_ok=True)
         jobs_output_dir.mkdir(parents=True, exist_ok=True)
         self._initialize()
@@ -187,6 +190,7 @@ class JobManager:
             try:
                 processor(self.get(job.job_id), lambda stage: self._update(job.job_id, stage=stage))
             except Exception as error:
+                self._logger.exception("job_id=%s: ジョブが失敗しました。", job.job_id)
                 self._update(job.job_id, status=JobStatus.FAILED, finished_at=self._now(), error_message=str(error))
                 if stop_on_error:
                     return
