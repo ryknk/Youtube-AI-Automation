@@ -64,6 +64,12 @@ class QwenImageEditNunchakuLocalSettings:
     # nullの場合、lightning_steps指定時はその値、非指定時は40を既定値として使用する。
     num_inference_steps: int | None = None
     true_cfg_scale: float = 4.0
+    # 編集時の推論解像度。nullの場合は編集対象画像自身の解像度をそのまま使う（従来動作）。
+    # 生成側の出力解像度（scene_size等）より小さい値を指定すると、編集の推論画素数が減り
+    # 処理時間を短縮できる。編集後は_fit_to_sizeで編集対象画像と同じ解像度へ戻すため、
+    # 最終的な出力サイズはこの設定に依存しない。
+    width: int | None = None
+    height: int | None = None
     # 除去・編集内容を指示するプロンプト。既定値は字幕・キャプション帯の除去指示。
     prompt: str = DEFAULT_PROMPT
     # Qwen-Image-Edit系は空文字列だとエラーになるため、公式サンプルに合わせ半角スペースを既定値とする。
@@ -98,6 +104,10 @@ class QwenImageEditNunchakuLocalSettings:
             )
             seed_value = values.get("seed")
             model_cache_dir = values.get("model_cache_dir")
+            width_value = values.get("width")
+            height_value = values.get("height")
+            if (width_value is None) != (height_value is None):
+                raise ValueError("width と height は両方指定するか、両方省略してください。")
             return cls(
                 base_model_id=str(values.get("base_model_id", DEFAULT_BASE_MODEL_ID)),
                 transformer_repo_id=str(values.get("transformer_repo_id", DEFAULT_TRANSFORMER_REPO_ID)),
@@ -106,6 +116,8 @@ class QwenImageEditNunchakuLocalSettings:
                 lightning_steps=lightning_steps,
                 num_inference_steps=num_inference_steps,
                 true_cfg_scale=float(values.get("true_cfg_scale", 4.0)),
+                width=int(width_value) if width_value is not None else None,
+                height=int(height_value) if height_value is not None else None,
                 prompt=str(values.get("prompt", DEFAULT_PROMPT)),
                 negative_prompt=str(values.get("negative_prompt", " ")),
                 offload_threshold_gb=float(values.get("offload_threshold_gb", 18.0)),
@@ -145,12 +157,23 @@ class QwenImageEditNunchakuLocalImageEditor(ImageEditor):
 
         source_image = Image.open(image_file).convert("RGB")
         target_size = source_image.size
+        # widthとheightが設定されていれば、編集対象画像自身の解像度ではなくこちらで推論する
+        # （生成側の出力解像度より小さくすることで推論画素数を減らし処理時間を短縮できる）。
+        # 編集後は_fit_to_sizeでtarget_size（編集前と同じ解像度）へ戻すため、最終的な
+        # 出力サイズはこの設定に依存しない。
+        inference_size = (
+            (self._settings.width, self._settings.height)
+            if self._settings.width is not None and self._settings.height is not None
+            else target_size
+        )
         num_inference_steps = self._settings.resolved_num_inference_steps()
         self._logger.info(
             "Qwen-Image-Edit(nunchaku)による画像編集を開始します: file=%s, base_model_id=%s, "
-            "transformer_repo_id=%s, steps=%d, true_cfg_scale=%s, size=%dx%d, seed=%d",
+            "transformer_repo_id=%s, steps=%d, true_cfg_scale=%s, original_size=%dx%d, "
+            "inference_size=%dx%d, seed=%d",
             image_file, self._settings.base_model_id, self._settings.transformer_repo_id,
-            num_inference_steps, self._settings.true_cfg_scale, target_size[0], target_size[1], seed,
+            num_inference_steps, self._settings.true_cfg_scale, target_size[0], target_size[1],
+            inference_size[0], inference_size[1], seed,
         )
         edit_kwargs: dict[str, Any] = {
             "image": [source_image],
@@ -158,8 +181,8 @@ class QwenImageEditNunchakuLocalImageEditor(ImageEditor):
             "negative_prompt": self._settings.negative_prompt,
             "true_cfg_scale": self._settings.true_cfg_scale,
             "num_inference_steps": num_inference_steps,
-            "width": target_size[0],
-            "height": target_size[1],
+            "width": inference_size[0],
+            "height": inference_size[1],
             "generator": generator,
         }
 

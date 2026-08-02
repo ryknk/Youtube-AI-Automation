@@ -413,3 +413,83 @@ class PluginManagerTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "未対応のscene_editプロバイダー"):
             manager.create_image_editor(image_settings, RetryPolicy(max_attempts=1))
+
+    @patch("youtube_generator.plugins.manager.QwenImageEditNunchakuLocalImageEditor")
+    def test_image_editor_auto_detects_resolution_from_scene_generation_provider(self, editor_class) -> None:  # type: ignore[no-untyped-def]
+        """widthとheight未指定時、providers.image.sceneで選択中のプロバイダーの
+        width/height設定から編集時の推論解像度を自動決定すること。"""
+        manager = PluginManager(Settings(), {"image": {"scene": "qwen_image_nunchaku_local"}}, {})
+        image_settings = {
+            "scene_edit": {"enabled": True},
+            "qwen_image_edit_nunchaku_local": {"rank": 128},
+            "qwen_image_nunchaku_local": {"width": 1664, "height": 928},
+        }
+
+        manager.create_image_editor(image_settings, RetryPolicy(max_attempts=1))
+
+        settings = editor_class.call_args.args[0]
+        self.assertEqual(settings.width, 1664)
+        self.assertEqual(settings.height, 928)
+
+    @patch("youtube_generator.plugins.manager.QwenImageEditNunchakuLocalImageEditor")
+    def test_image_editor_auto_detects_resolution_from_qwen_image_local(self, editor_class) -> None:  # type: ignore[no-untyped-def]
+        """自動決定はnunchaku版に限らず、providers.image.sceneで選択中の任意のプロバイダー
+        （ここではqwen_image_local）のwidth/heightを汎用的に参照すること。"""
+        manager = PluginManager(Settings(), {"image": {"scene": "qwen_image_local"}}, {})
+        image_settings = {
+            "scene_edit": {"enabled": True},
+            "qwen_image_edit_nunchaku_local": {},
+            "qwen_image_local": {"width": 1664, "height": 928},
+        }
+
+        manager.create_image_editor(image_settings, RetryPolicy(max_attempts=1))
+
+        settings = editor_class.call_args.args[0]
+        self.assertEqual(settings.width, 1664)
+        self.assertEqual(settings.height, 928)
+
+    @patch("youtube_generator.plugins.manager.QwenImageEditNunchakuLocalImageEditor")
+    def test_image_editor_explicit_resolution_overrides_auto_detection(self, editor_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(), {"image": {"scene": "qwen_image_nunchaku_local"}}, {})
+        image_settings = {
+            "scene_edit": {"enabled": True},
+            "qwen_image_edit_nunchaku_local": {"width": 800, "height": 450},
+            "qwen_image_nunchaku_local": {"width": 1664, "height": 928},
+        }
+
+        manager.create_image_editor(image_settings, RetryPolicy(max_attempts=1))
+
+        settings = editor_class.call_args.args[0]
+        self.assertEqual(settings.width, 800)
+        self.assertEqual(settings.height, 450)
+
+    @patch("youtube_generator.plugins.manager.QwenImageEditNunchakuLocalImageEditor")
+    def test_image_editor_resolution_stays_none_when_scene_provider_has_no_width_height(self, editor_class) -> None:  # type: ignore[no-untyped-def]
+        """BFL/OpenAI等、width/heightという概念を持たないプロバイダーを選択している場合は
+        自動決定されず、従来どおり編集対象画像自身の解像度で推論すること。"""
+        manager = PluginManager(Settings(), {"image": {"scene": "bfl"}}, {})
+        image_settings = {
+            "scene_edit": {"enabled": True},
+            "qwen_image_edit_nunchaku_local": {},
+        }
+
+        manager.create_image_editor(image_settings, RetryPolicy(max_attempts=1))
+
+        settings = editor_class.call_args.args[0]
+        self.assertIsNone(settings.width)
+        self.assertIsNone(settings.height)
+
+    @patch("youtube_generator.plugins.manager.QwenImageEditNunchakuLocalImageEditor")
+    def test_image_editor_resolution_stays_none_when_scene_provider_unconfigured(self, editor_class) -> None:  # type: ignore[no-untyped-def]
+        """providers.image.sceneが未設定の場合もエラーにせず、自動決定をスキップすること。"""
+        manager = PluginManager(Settings(), {}, {})
+        image_settings = {
+            "scene_edit": {"enabled": True},
+            "qwen_image_edit_nunchaku_local": {"rank": 128},
+        }
+
+        manager.create_image_editor(image_settings, RetryPolicy(max_attempts=1))
+
+        settings = editor_class.call_args.args[0]
+        self.assertIsNone(settings.width)
+        self.assertIsNone(settings.height)

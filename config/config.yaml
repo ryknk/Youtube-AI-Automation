@@ -85,6 +85,15 @@ image:
     # nullの場合はlightning_stepsの値（8）を使用する。
     num_inference_steps: null
     true_cfg_scale: 4.0
+    # 編集時の推論解像度。未指定（null）の場合、providers.image.sceneで選択中の画像生成
+    # プロバイダー（qwen_image_local / qwen_image_nunchaku_local等、width/heightを持つもの
+    # ならどれでも対象）のwidth/height設定から自動的に決定される
+    # （PluginManager.create_image_editor参照）。シーン画像は生成後に出力解像度（scene_size、
+    # 既定1920x1080）へリサイズ済みのため、それより少ない生成時解像度で編集を行うことで
+    # 処理時間を短縮できる。編集後は編集対象画像と同じ解像度へ戻して保存するため、最終的な
+    # 出力サイズはこの設定に依存しない。明示的に指定するとその値が自動決定より優先される。
+    width: null
+    height: null
     # 除去・編集内容を指示するプロンプト。既定値は字幕・キャプション帯の除去指示。
     # 実測では、下部の帯を除去した領域が反転コピー（鏡写し）のようになる副作用が確認できた
     # ため、それを避ける指示を含めている。必要に応じて調整すること。

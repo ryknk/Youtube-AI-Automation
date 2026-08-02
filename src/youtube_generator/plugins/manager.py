@@ -226,9 +226,36 @@ class PluginManager:
             editor_settings_raw = image_settings.get("qwen_image_edit_nunchaku_local", {})
             if not isinstance(editor_settings_raw, dict):
                 raise ValueError("config.yaml の image.qwen_image_edit_nunchaku_local 設定が不正です。")
+            editor_settings_raw = self._with_auto_edit_resolution(editor_settings_raw, image_settings)
             editor_settings = QwenImageEditNunchakuLocalSettings.from_mapping(editor_settings_raw)
             return QwenImageEditNunchakuLocalImageEditor(editor_settings)
         raise ValueError(f"未対応のscene_editプロバイダーです: {provider_name}")
+
+    def _with_auto_edit_resolution(
+        self, editor_settings_raw: dict[str, Any], image_settings: dict[str, Any],
+    ) -> dict[str, Any]:
+        """編集時の推論解像度を、明示指定がなければシーン画像生成プロバイダーの生成解像度
+        （width/height）から自動決定する。
+
+        シーン画像は生成後に出力解像度（scene_size）へリサイズ済みのため、画像ファイル自体の
+        サイズからは生成時の解像度を復元できない。そのため生成プロバイダーの設定を直接参照する。
+        BFL/OpenAIのようにwidth/heightという概念を持たないプロバイダーの場合は自動決定できず、
+        従来どおり編集対象画像自身の解像度で推論する（＝widthとheightがNoneのまま）。
+        """
+        if editor_settings_raw.get("width") is not None or editor_settings_raw.get("height") is not None:
+            return editor_settings_raw
+        try:
+            scene_provider_name = self.image_provider_name("scene")
+        except ValueError:
+            return editor_settings_raw
+        scene_provider_settings = image_settings.get(scene_provider_name, {})
+        if not isinstance(scene_provider_settings, dict):
+            return editor_settings_raw
+        width = scene_provider_settings.get("width")
+        height = scene_provider_settings.get("height")
+        if width is None or height is None:
+            return editor_settings_raw
+        return {**editor_settings_raw, "width": width, "height": height}
 
     @staticmethod
     def _prompt_suffix(image_settings: dict[str, Any], provider_name: str) -> str:

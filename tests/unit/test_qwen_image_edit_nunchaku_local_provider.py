@@ -167,6 +167,8 @@ class QwenImageEditNunchakuLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.negative_prompt, " ")
         self.assertEqual(settings.offload_threshold_gb, 18.0)
         self.assertIsNone(settings.seed)
+        self.assertIsNone(settings.width)
+        self.assertIsNone(settings.height)
 
     def test_from_mapping_reads_all_fields(self) -> None:
         settings = QwenImageEditNunchakuLocalSettings.from_mapping({
@@ -174,6 +176,7 @@ class QwenImageEditNunchakuLocalSettingsTests(unittest.TestCase):
             "true_cfg_scale": 2.0, "prompt": "remove text", "negative_prompt": "blurry",
             "offload_threshold_gb": 24.0, "low_vram_use_pin_memory": True,
             "low_vram_num_blocks_on_gpu": 2, "seed": 5, "model_cache_dir": "D:/custom/cache",
+            "width": 1664, "height": 928,
         })
 
         self.assertEqual(settings.precision, "nvfp4")
@@ -185,6 +188,14 @@ class QwenImageEditNunchakuLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.negative_prompt, "blurry")
         self.assertEqual(settings.seed, 5)
         self.assertEqual(settings.model_cache_dir, "D:/custom/cache")
+        self.assertEqual(settings.width, 1664)
+        self.assertEqual(settings.height, 928)
+
+    def test_from_mapping_rejects_mismatched_width_height(self) -> None:
+        with self.assertRaises(ValueError):
+            QwenImageEditNunchakuLocalSettings.from_mapping({"width": 1664})
+        with self.assertRaises(ValueError):
+            QwenImageEditNunchakuLocalSettings.from_mapping({"height": 928})
 
     def test_lightning_steps_null_falls_back_to_40(self) -> None:
         settings = QwenImageEditNunchakuLocalSettings.from_mapping({"lightning_steps": None})
@@ -253,6 +264,32 @@ class QwenImageEditNunchakuLocalImageEditorTests(unittest.TestCase):
         )
 
         # 出力ファイルは編集前と同じサイズへ整形して上書き保存される。
+        with Image.open(self.image_file) as saved_image:
+            self.assertEqual(saved_image.size, (800, 600))
+
+    def test_edit_uses_configured_inference_size_and_restores_original_size(self) -> None:
+        """width/height設定時は編集対象画像自身のサイズではなくその値で推論し、
+        推論後に編集前と同じサイズへ戻して保存すること（処理時間短縮のための解像度分離）。"""
+        settings = QwenImageEditNunchakuLocalSettings.from_mapping({
+            "seed": 123, "width": 400, "height": 300,
+        })
+        result_image = Image.new("RGB", (400, 300), color="blue")
+        pipeline = FakePipeline(result_image)
+        transformer_cls = FakeNunchakuTransformerClass(FakeTransformer())
+        torch_module = FakeTorch(cuda_available=True)
+        diffusers_module = FakeDiffusers(pipeline)
+        nunchaku_utils = FakeNunchakuUtils(gpu_memory_gb=24.0)
+        editor = QwenImageEditNunchakuLocalImageEditor(settings)
+
+        patches = _patch_imports(torch_module, diffusers_module, transformer_cls, nunchaku_utils)
+        with patches[0], patches[1], patches[2]:
+            editor.edit(self.image_file)
+
+        # 元画像は800x600だが、推論はwidth/height設定（400x300）で行われる。
+        call = pipeline.calls[0]
+        self.assertEqual((call["width"], call["height"]), (400, 300))
+
+        # 保存されるファイルは編集前と同じ800x600へ戻される。
         with Image.open(self.image_file) as saved_image:
             self.assertEqual(saved_image.size, (800, 600))
 
