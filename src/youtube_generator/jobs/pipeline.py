@@ -50,8 +50,14 @@ class ExistingPipelineRunner:
         self._copy_matching(work_dir, "scene*.mp3", job.output_dir / "audio")
 
         update_stage(JobStage.IMAGE_GENERATION)
+        # 生成用モデルと編集用モデルを同一プロセス内で交互にロードするとVRAM/システムメモリを
+        # 圧迫し、無応答のままプロセスが強制終了することがあるため、別プロセスの実行に分離している。
         self._run(
             "--generate-images", str(work_dir), "--template", job.template,
+            on_line=self._make_image_progress_handler(on_progress) if on_progress else None,
+        )
+        self._run(
+            "--edit-images", str(work_dir), "--template", job.template,
             on_line=self._make_image_progress_handler(on_progress) if on_progress else None,
         )
         self._copy_matching(work_dir, "scene*.png", job.output_dir / "images")

@@ -51,6 +51,12 @@ from youtube_generator.cli.render import run_render
 from youtube_generator.cli.image import run_image
 
 
+# --generate-imagesが求めた生成キャッシュキーを--edit-imagesへ引き継ぐための一時ファイル名。
+# scene*.pngの内容は編集で書き換わるためキャッシュキーの元にできない（二重編集を招く）が、
+# この値は生成設定のみに由来し編集で変化しないため、編集キャッシュキーの安定した構成要素になる。
+_IMAGE_CACHE_KEY_SIDECAR = ".image_cache_key"
+
+
 def _parse_image_size(size: str) -> tuple[int, int] | None:
     """"WxH"形式の画像サイズ設定を解析する。解析できない場合は品質チェックをスキップするためNoneを返す。"""
     try:
@@ -68,6 +74,7 @@ def create_parser() -> argparse.ArgumentParser:
     input_group.add_argument("--split-script", type=Path, help="分割する script.txt のパス")
     input_group.add_argument("--generate-audio", type=Path, help="sceneNN.txt があるフォルダのパス")
     input_group.add_argument("--generate-images", type=Path, help="sceneNN.txt があるフォルダのパス")
+    input_group.add_argument("--edit-images", type=Path, help="sceneNN_MM.png があるフォルダのパス")
     input_group.add_argument("--generate-subtitles", type=Path, help="sceneNN.mp3 があるフォルダのパス")
     input_group.add_argument("--generate-video", type=Path, help="シーン素材があるフォルダのパス")
     input_group.add_argument("--generate-metadata", type=Path, help="完成動画とscript.txtがあるフォルダのパス")
@@ -165,6 +172,8 @@ def run() -> None:
                 raise ValueError("OPENAI_API_KEY が未設定です。.env に設定してください。")
         if args.generate_images:
             logger.info("画像化対象のフォルダ: %s", args.generate_images)
+        if args.edit_images:
+            logger.info("画像編集対象のフォルダ: %s", args.edit_images)
         if args.generate_subtitles:
             logger.info("字幕生成対象のフォルダ: %s", args.generate_subtitles)
         if args.generate_video:
@@ -583,7 +592,6 @@ def run() -> None:
             scene_visual_describer = plugin_manager.create_scene_visual_describer(
                 image_settings, retry_policy,
             )
-            image_editor = plugin_manager.create_image_editor(image_settings, retry_policy)
             image_style = template.image_style or str(image_settings["style"])
             use_case = GenerateSceneImagesUseCase(
                 ImagePromptBuilder(image_style),
@@ -593,14 +601,14 @@ def run() -> None:
                 characters_per_second=float(quality_values["characters_per_second"]),
                 max_images=int(image_settings["max_count"]),
                 scene_visual_describer=scene_visual_describer,
-                image_editor=image_editor,
             )
             image_inputs = tuple(sorted(args.generate_images.glob("scene*.txt")))
             # thumbnail_model/thumbnail_sizeはシーン画像に影響しないため、
             # サムネイル専用設定の変更でシーン画像キャッシュを無効化しないようfingerprintから除外する。
+            # scene_editは--edit-images側の独立した工程・キャッシュが担うため、生成キャッシュには含めない。
             scene_image_settings = {
                 key: value for key, value in image_settings.items()
-                if key not in {"thumbnail_model", "thumbnail_size"}
+                if key not in {"thumbnail_model", "thumbnail_size", "scene_edit"}
             }
             # scene_description.modelがnullの場合はtext.scene_split_modelへフォールバックするため
             # （create_scene_visual_describer参照）、実際に使用されるモデル名を明示的に含める。
@@ -617,6 +625,10 @@ def run() -> None:
                 "scene-description", str(scene_description_enabled), scene_description_model,
             )
             image_cache_key = CacheManager.make_file_key("image", image_inputs, image_fingerprint)
+            # --edit-imagesが同じ生成結果に対して再現性のある編集キャッシュキーを組み立てられるよう、
+            # 生成キャッシュキーをsidecarファイルへ書き出す（scene*.pngの内容は編集で書き換わるため、
+            # png自体のハッシュを編集キャッシュキーの元にすると再実行時に二重編集してしまう）。
+            (args.generate_images / _IMAGE_CACHE_KEY_SIDECAR).write_text(image_cache_key, encoding="utf-8")
             if cache_manager is not None and cache_manager.exists(image_cache_key, "image"):
                 image_files = cache_manager.restore_files(image_cache_key, "image", args.generate_images)
                 logger.info("画像をキャッシュから復元しました。")
@@ -628,11 +640,75 @@ def run() -> None:
             release_image_generator = getattr(image_generator, "release", None)
             if callable(release_image_generator):
                 release_image_generator()
+            logger.info("%d件のPNGファイルを生成しました。", len(image_files))
+            history.record(run_id, "scene_images_generated", image_count=len(image_files))
+            history.record(run_id, "run_completed")
+            for file_path in image_files:
+                execution_logger.add_generated_file(file_path)
+            execution_logger.finish(success=True)
+            set_active_logger(None)
+            return
+
+        if args.edit_images:
+            retry_settings = video_settings.values["retry"]
+            image_settings = video_settings.values["image"]
+            if not isinstance(retry_settings, dict) or not isinstance(image_settings, dict):
+                raise ValueError("config.yaml の retry または image 設定が不正です。")
+            retry_policy = RetryPolicy.from_settings(retry_settings)
+            image_editor = plugin_manager.create_image_editor(image_settings, retry_policy)
+            if image_editor is None:
+                logger.info("image.scene_edit.enabled が false のため画像編集をスキップします。")
+                history.record(run_id, "run_completed")
+                execution_logger.finish(success=True)
+                set_active_logger(None)
+                return
+
+            image_files = tuple(sorted(args.edit_images.glob("scene*.png")))
+            if not image_files:
+                raise FileNotFoundError(f"scene*.png が見つかりません: {args.edit_images}")
+
+            scene_edit_settings = image_settings.get("scene_edit", {})
+            if not isinstance(scene_edit_settings, dict):
+                raise ValueError("config.yaml の image.scene_edit 設定が不正です。")
+            edit_provider_name = str(scene_edit_settings.get("provider", "qwen_image_edit_nunchaku_local")).lower()
+            edit_provider_settings = image_settings.get(edit_provider_name, {})
+            edit_fingerprint = CacheManager.make_key(
+                edit_provider_name,
+                json.dumps(scene_edit_settings, ensure_ascii=False, sort_keys=True),
+                json.dumps(edit_provider_settings, ensure_ascii=False, sort_keys=True),
+                "image-edit-v1",
+            )
+            # 生成キャッシュキー（--generate-imagesが書き出したsidecar）と編集設定から編集キャッシュ
+            # キーを求める。scene*.png自体の内容は編集によって書き換わるため、その内容をハッシュ元に
+            # すると再実行時に既に編集済みの画像を再度編集してしまう（二重編集）。生成キャッシュキーは
+            # 編集で変化しない安定した値のため、これを使うことで再実行時も同じキーを再利用できる。
+            sidecar_file = args.edit_images / _IMAGE_CACHE_KEY_SIDECAR
+            generation_cache_key = sidecar_file.read_text(encoding="utf-8").strip() if sidecar_file.is_file() else None
+            edit_cache_key = (
+                CacheManager.make_key(generation_cache_key, edit_fingerprint)
+                if generation_cache_key else None
+            )
+
+            if (
+                edit_cache_key is not None and cache_manager is not None
+                and cache_manager.exists(edit_cache_key, "image_edited")
+            ):
+                image_files = cache_manager.restore_files(edit_cache_key, "image_edited", args.edit_images)
+                logger.info("編集済み画像をキャッシュから復元しました。")
+                history.record(run_id, "cache_hit", artifact="image_edited", cache_key=edit_cache_key)
+            else:
+                total = len(image_files)
+                for progress, image_file in enumerate(image_files, 1):
+                    image_editor.edit(image_file)
+                    logger.info("画像編集: (%d/%d)", progress, total)
+                if edit_cache_key is not None and cache_manager is not None:
+                    cache_manager.save_files(edit_cache_key, "image_edited", image_files)
+
             release_image_editor = getattr(image_editor, "release", None)
             if callable(release_image_editor):
                 release_image_editor()
-            logger.info("%d件のPNGファイルを生成しました。", len(image_files))
-            history.record(run_id, "scene_images_generated", image_count=len(image_files))
+            logger.info("%d件のPNGファイルを編集しました。", len(image_files))
+            history.record(run_id, "scene_images_edited", image_count=len(image_files))
             history.record(run_id, "run_completed")
             for file_path in image_files:
                 execution_logger.add_generated_file(file_path)

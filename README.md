@@ -232,13 +232,16 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 .\run.cmd --split-script "$workDir\script.txt" --template science
 .\run.cmd --generate-audio "$workDir" --template science
 .\run.cmd --generate-images "$workDir" --template science
+.\run.cmd --edit-images "$workDir" --template science
 .\run.cmd --generate-subtitles "$workDir" --template science
 .\run.cmd --generate-video "$workDir" --template science
 .\run.cmd --generate-metadata "$workDir" --template science --topic "宇宙の不思議"
 .\run.cmd --generate-thumbnail "$workDir" --template science
 ```
 
-`--template`には台本生成時と同じIDを指定してください。テンプレートが異なると、画像・タイトル・サムネイルの生成方針も変わります。メタデータ生成では、タイトル生成に動画テーマを反映するため`--topic`も指定してください。ジョブ実行時はジョブのテーマが自動的に渡されます。`--theme`、`--split-script`、各`--generate-*`は同時指定できないため、工程ごとに個別実行します。
+`--template`には台本生成時と同じIDを指定してください。テンプレートが異なると、画像・タイトル・サムネイルの生成方針も変わります。メタデータ生成では、タイトル生成に動画テーマを反映するため`--topic`も指定してください。ジョブ実行時はジョブのテーマが自動的に渡されます。`--theme`、`--split-script`、各`--generate-*`・`--edit-images`は同時指定できないため、工程ごとに個別実行します。
+
+`--generate-images`はシーン画像の生成のみを行います。`--edit-images`は生成済みの`scene*.png`に対する後述の[キャプション帯除去（scene_edit）](#シーン画像の後処理でキャプション帯を除去するscene_edit)のみを行う別コマンドです。2つのモデルを同一プロセス内で交互にロードするとVRAM/システムメモリを圧迫しやすいため、あえて別プロセス（別コマンド）に分離しています。`image.scene_edit.enabled`が`false`（既定）の場合、`--edit-images`は何もせず終了します。
 
 台本、シーン分割、音声、画像、メタデータ、サムネイルの生成では外部API利用料が発生します。字幕生成と動画レンダリングはローカルのFFmpegを使用します。
 
@@ -758,6 +761,15 @@ image:
 ```
 
 有効化するとシーン画像1枚ごとに追加の推論が発生し処理時間が大きく増加します（実測: RTX 4070/12GBで`num_inference_steps=8`のとき約107秒/枚。別途モデルダウンロード・ロードで初回のみ約13分、ディスク使用量+約27GBが必要）。詳細な設定項目（`precision`/`rank`/`lightning_steps`等）は`config/config.yaml`の`image.qwen_image_edit_nunchaku_local`を参照してください。CUDA専用でCPU実行には対応していません。
+
+生成用モデル（Qwen-Imageなど）と編集用モデルを同一プロセス内で交互にロードするとVRAM/システムメモリを圧迫するため、キュー実行（`queue run`）・単発実行いずれも生成と編集を別プロセスに分離しています。キュー実行時は`IMAGE_GENERATION`工程内で`--generate-images`の後に`--edit-images`が自動的に実行されます。キューを使わない場合は次のように個別に実行してください。
+
+```powershell
+.\run.cmd --generate-images "$workDir" --template science
+.\run.cmd --edit-images "$workDir" --template science
+```
+
+`--edit-images`は`--generate-images`が対象フォルダへ書き出す生成キャッシュキー（`.image_cache_key`）と編集設定からキャッシュキーを組み立てるため、`--generate-images`より先に単独で実行することはできません。編集結果も`cache/`に保存され、生成設定・編集設定のいずれも変わっていなければ再編集をスキップします。
 
 ## シーン内の画像を複数枚・自然なタイミングで切り替える
 

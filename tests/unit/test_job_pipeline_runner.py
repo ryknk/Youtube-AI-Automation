@@ -60,7 +60,9 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
             (Path(arguments[1]) / "scene01.png").write_bytes(b"image")
             if on_line is not None:
                 on_line("2026-01-01 00:00:00,000 | INFO | youtube_generator.app.generate_scene_images | 画像生成: (1/1)")
-                on_line("2026-01-01 00:00:01,000 | INFO | youtube_generator.app.generate_scene_images | 画像編集: (1/1)")
+        elif command == "--edit-images":
+            if on_line is not None:
+                on_line("2026-01-01 00:00:01,000 | INFO | youtube_generator.cli.main | 画像編集: (1/1)")
         elif command == "--generate-subtitles":
             (Path(arguments[1]) / "subtitles.srt").write_text(
                 "1\n00:00:00,000 --> 00:00:01,000\nテスト\n", encoding="utf-8",
@@ -138,11 +140,11 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
 
         commands = [call[0] for call in self.calls]
         self.assertEqual(commands, [
-            "--theme", "--split-script", "--generate-audio", "--generate-images",
+            "--theme", "--split-script", "--generate-audio", "--generate-images", "--edit-images",
             "--generate-subtitles", "--generate-video", "--generate-metadata", "--generate-thumbnail",
         ])
         self.assertEqual(self.calls[0], ("--theme", "宇宙の不思議", "--template", "default", "--run-id", "job-1"))
-        metadata_call = self.calls[6]
+        metadata_call = self.calls[7]
         self.assertIn("--topic", metadata_call)
         self.assertEqual(metadata_call[metadata_call.index("--topic") + 1], "宇宙の不思議")
 
