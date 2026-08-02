@@ -230,6 +230,25 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
             self.assertIn("生成済みの画像 1/2 件をスキップします。", messages)
             self.assertIn("画像生成: (2/2)", messages)
 
+    def test_execute_with_force_regenerates_already_generated_images(self) -> None:
+        """--forceオプション指定時は既存ファイルの有無を無視し、常に全件生成し直す。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            (scenes_dir / "scene01_01.png").write_bytes(b"already-generated")
+            generator = MockImageProvider()
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), generator,
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+            )
+
+            image_files = use_case.execute(scenes_dir, force=True)
+
+            self.assertEqual([file.name for file in image_files], ["scene01_01.png", "scene02_01.png"])
+            self.assertEqual(len(generator.prompts), 2)
+            self.assertEqual((scenes_dir / "scene01_01.png").read_bytes(), b"fake-png")
+
     def test_execute_does_not_call_scene_visual_describer_for_already_generated_images(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             scenes_dir = Path(temporary_directory)

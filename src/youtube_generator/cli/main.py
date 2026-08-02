@@ -106,7 +106,10 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--script", help="品質チェックする台本文。API生成後は生成台本を渡す想定です。")
     parser.add_argument(
         "--force", action="store_true",
-        help="--generate-video使用時、動画キャッシュを無視して強制的に再生成します。",
+        help=(
+            "キャッシュ・既存ファイルを無視して強制的に再生成します"
+            "（--generate-video/--generate-images/--edit-imagesで使用）。"
+        ),
     )
     parser.add_argument("--version", action="version", version="Youtube AI Automation 0.1.0")
     parser.add_argument("--run-id", help=argparse.SUPPRESS)
@@ -651,7 +654,12 @@ def run() -> None:
             # png自体のハッシュを編集キャッシュキーの元にすると再実行時に二重編集してしまう）。
             (args.generate_images / _IMAGE_CACHE_KEY_SIDECAR).write_text(image_cache_key, encoding="utf-8")
             existing_scene_images = tuple(args.generate_images.glob("scene*.png"))
-            if existing_scene_images:
+            if args.force:
+                # --force指定時は既存ファイル・キャッシュの有無を無視し、常に全件生成し直す。
+                image_files = use_case.execute(args.generate_images, force=True)
+                if cache_manager is not None:
+                    cache_manager.save_files(image_cache_key, "image", image_files)
+            elif existing_scene_images:
                 # 中断されたジョブの再試行などでこのフォルダに一部の画像が既に生成・編集済みの
                 # 場合、キャッシュから復元すると編集済みの内容が生成直後の状態で上書きされて
                 # しまうため復元は行わず、既存ファイルを活かして未生成分のみ生成する
@@ -726,7 +734,7 @@ def run() -> None:
             resume_key = edit_cache_key or edit_fingerprint
 
             if (
-                edit_cache_key is not None and cache_manager is not None
+                not args.force and edit_cache_key is not None and cache_manager is not None
                 and cache_manager.exists(edit_cache_key, "image_edited")
             ):
                 image_files = cache_manager.restore_files(edit_cache_key, "image_edited", args.edit_images)
@@ -736,7 +744,8 @@ def run() -> None:
                 total = len(image_files)
                 # 中断されたジョブの再試行等で一部の画像が同じ編集設定で既に編集済みの場合、
                 # 二重編集（破壊的処理のため画質劣化を招く）を避けるためスキップする。
-                pending_files = [
+                # --force指定時はこの判定を無視し、常に全件編集し直す。
+                pending_files = image_files if args.force else [
                     image_file for image_file in image_files
                     if not _is_already_edited(image_file, resume_key)
                 ]

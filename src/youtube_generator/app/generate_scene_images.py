@@ -54,8 +54,11 @@ class GenerateSceneImagesUseCase:
         self._image_editor = image_editor
         self._logger = get_logger(__name__)
 
-    def execute(self, scenes_dir: Path) -> tuple[Path, ...]:
-        """各シーンを番号順に画像化し、sceneNN_MM.png（MM=シーン内の通し番号）を保存する。"""
+    def execute(self, scenes_dir: Path, force: bool = False) -> tuple[Path, ...]:
+        """各シーンを番号順に画像化し、sceneNN_MM.png（MM=シーン内の通し番号）を保存する。
+
+        force=Trueの場合、既存の画像ファイルの有無を無視してすべて生成し直す。
+        """
         scene_files = self._find_scene_files(scenes_dir)
         if not scene_files:
             raise FileNotFoundError(f"sceneNN.txt が見つかりません: {scenes_dir}")
@@ -70,7 +73,8 @@ class GenerateSceneImagesUseCase:
         total = len(plan)
         # 中断されたジョブの再試行等で一部の画像が既に生成済みの場合、同名ファイルが既に
         # あれば生成済みとみなして再生成しない（無駄なAPI課金・GPU処理の防止）。
-        pending = [entry for entry in plan if not entry[1].exists()]
+        # force=Trueの場合はこの判定を無視し、常に全件生成し直す。
+        pending = list(plan) if force else [entry for entry in plan if not entry[1].exists()]
         skipped = total - len(pending)
         if skipped:
             self._logger.info("生成済みの画像 %d/%d 件をスキップします。", skipped, total)
