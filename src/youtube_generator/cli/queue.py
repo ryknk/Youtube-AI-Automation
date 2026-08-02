@@ -46,6 +46,12 @@ def run_queue(arguments: list[str]) -> None:
         settings.data_dir / "jobs.db", settings.output_dir,
         output_directory_factory=output_directory,
     )
+    # PowerShellを閉じる等でプロセスが強制終了され、RUNNINGのまま残ったジョブが
+    # retry/cancel/delete等を受け付けられなくなる問題を防ぐため、有効なコマンドの
+    # 実行前に必ず中断ジョブを回収する（実際に稼働中のPIDを持つジョブは対象外）。
+    recovered_count = manager.recover_interrupted()
+    if recovered_count:
+        logger.info("前回実行が中断されたジョブ %d 件を再実行待ちへ戻しました。", recovered_count)
 
     if args.command == "add":
         job = manager.add(args.theme, args.template)

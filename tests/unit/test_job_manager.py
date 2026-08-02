@@ -1,5 +1,8 @@
 """SQLiteジョブキューのテスト。"""
 
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -98,6 +101,74 @@ class JobManagerTests(unittest.TestCase):
 
             self.assertEqual(manager.recover_interrupted(), 1)
             self.assertEqual(manager.get(job.job_id).status, JobStatus.PENDING)
+
+    def test_recover_interrupted_skips_job_whose_pid_is_still_alive(self) -> None:
+        """PowerShellを閉じた際の強制終了と、別ターミナルで実際に`queue run`が稼働中の
+        ケースを区別できることを確認する（後者はPENDINGへ巻き戻してはならない）。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manager = JobManager(Path(temporary_directory) / "jobs.db", Path(temporary_directory) / "jobs")
+            job = manager.add("実行中", "trivia")
+            manager._update(  # type: ignore[attr-defined]
+                job.job_id, status=JobStatus.RUNNING, stage=JobStage.VOICE_GENERATION, pid=os.getpid(),
+            )
+
+            self.assertEqual(manager.recover_interrupted(), 0)
+            self.assertEqual(manager.get(job.job_id).status, JobStatus.RUNNING)
+
+    def test_recover_interrupted_recovers_job_whose_pid_has_exited(self) -> None:
+        """PowerShellを閉じてプロセスが強制終了された場合を模す: 記録されたPIDは既に
+        存在しないため、RUNNINGのまま残ったジョブをPENDINGへ回収できる。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manager = JobManager(Path(temporary_directory) / "jobs.db", Path(temporary_directory) / "jobs")
+            job = manager.add("強制終了", "trivia")
+            finished_process = subprocess.Popen([sys.executable, "-c", "pass"])
+            finished_process.wait()
+            manager._update(  # type: ignore[attr-defined]
+                job.job_id, status=JobStatus.RUNNING, stage=JobStage.VOICE_GENERATION, pid=finished_process.pid,
+            )
+
+            self.assertEqual(manager.recover_interrupted(), 1)
+            recovered = manager.get(job.job_id)
+            self.assertEqual(recovered.status, JobStatus.PENDING)
+            self.assertIsNone(recovered.pid)
+
+    def test_recover_interrupted_job_can_then_be_cancelled_and_deleted(self) -> None:
+        """回収前はRUNNINGのためcancel/deleteが拒否されるが、回収後は受け付けられる
+        （PowerShellを閉じた後にretry/cancel/deleteが一切実行できない問題の回帰テスト）。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manager = JobManager(Path(temporary_directory) / "jobs.db", Path(temporary_directory) / "jobs")
+            job = manager.add("中断", "trivia")
+            manager._update(  # type: ignore[attr-defined]
+                job.job_id, status=JobStatus.RUNNING, stage=JobStage.VOICE_GENERATION, pid=None,
+            )
+
+            with self.assertRaises(ValueError):
+                manager.cancel(job.job_id)
+
+            manager.recover_interrupted()
+
+            self.assertEqual(manager.cancel(job.job_id).status, JobStatus.CANCELLED)
+
+    def test_is_process_alive_true_for_current_process(self) -> None:
+        self.assertTrue(JobManager._is_process_alive(os.getpid()))  # type: ignore[attr-defined]
+
+    def test_is_process_alive_false_for_exited_process(self) -> None:
+        finished_process = subprocess.Popen([sys.executable, "-c", "pass"])
+        finished_process.wait()
+        self.assertFalse(JobManager._is_process_alive(finished_process.pid))  # type: ignore[attr-defined]
+
+    def test_run_pending_records_pid_while_running(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manager = JobManager(Path(temporary_directory) / "jobs.db", Path(temporary_directory) / "jobs")
+            manager.add("記録", "trivia")
+            observed_pid: list[int | None] = []
+
+            def processor(job, update_stage):  # type: ignore[no-untyped-def]
+                observed_pid.append(job.pid)
+
+            manager.run_pending(processor)
+
+            self.assertEqual(observed_pid, [os.getpid()])
 
     def test_delete_removes_job_but_keeps_output_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

@@ -1,9 +1,13 @@
 """SQLiteを利用した逐次ジョブキュー。"""
 
 import csv
+import ctypes
+import ctypes.wintypes
 import json
+import os
 import re
 import sqlite3
+import sys
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -49,6 +53,7 @@ class Job:
     output_dir: Path
     error_message: str | None
     retry_count: int
+    pid: int | None = None
 
 
 JobProcessor = Callable[[Job, Callable[[JobStage], None]], None]
@@ -87,7 +92,7 @@ class JobManager:
         created_at = self._now()
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO jobs VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, NULL, 0)",
+                "INSERT INTO jobs VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, NULL, 0, NULL)",
                 (job_id, theme.strip(), template.strip(), created_at, JobStatus.PENDING.value, str(output_dir)),
             )
         return self.get(job_id)
@@ -172,13 +177,64 @@ class JobManager:
         return self.get(job_id)
 
     def recover_interrupted(self) -> int:
-        """異常終了でRUNNINGのまま残ったジョブを安全にPENDINGへ戻す。"""
+        """異常終了でRUNNINGのまま残ったジョブを安全にPENDINGへ戻す。
+
+        RUNNINGへ遷移させたプロセスのPIDが生存していれば、別ターミナルで実際に
+        `queue run` が動作中の可能性があるため対象外とする。PID未記録（旧データ）
+        またはプロセスが既に存在しない場合のみ、ターミナルを閉じる等でプロセスが
+        強制終了された中断とみなして回収する。
+        """
         with self._connect() as connection:
+            running_rows = connection.execute(
+                "SELECT job_id, pid FROM jobs WHERE status=?", (JobStatus.RUNNING.value,)
+            ).fetchall()
+            stale_job_ids = [
+                row["job_id"] for row in running_rows
+                if row["pid"] is None or not self._is_process_alive(row["pid"])
+            ]
+            if not stale_job_ids:
+                return 0
+            placeholders = ",".join("?" for _ in stale_job_ids)
             cursor = connection.execute(
-                "UPDATE jobs SET status=?, stage=NULL, started_at=NULL, error_message=? WHERE status=?",
-                (JobStatus.PENDING.value, "前回実行が中断されたため再実行待ちに戻しました。", JobStatus.RUNNING.value),
+                f"UPDATE jobs SET status=?, stage=NULL, started_at=NULL, pid=NULL, error_message=? "
+                f"WHERE job_id IN ({placeholders})",
+                (
+                    JobStatus.PENDING.value,
+                    "前回実行が中断されたため再実行待ちに戻しました。",
+                    *stale_job_ids,
+                ),
             )
         return cursor.rowcount
+
+    @staticmethod
+    def _is_process_alive(pid: int) -> bool:
+        """指定PIDのプロセスが現在も存在するか確認する（キューの多重実行防止用）。
+
+        PIDは再利用され得るため、プロセス終了後に別プロセスが同じPIDを取得した場合、
+        本来は中断済みのジョブを誤って「実行中」と判定する可能性がある（既知の限界）。
+        """
+        if sys.platform == "win32":
+            # プロセス終了後もハンドルが残っている間はOpenProcessが成功しうるため、
+            # 存在確認だけでなくGetExitCodeProcessでSTILL_ACTIVE(259)かどうかまで見る。
+            process_query_limited_information = 0x1000
+            still_active = 259
+            handle = ctypes.windll.kernel32.OpenProcess(process_query_limited_information, False, pid)
+            if not handle:
+                return False
+            try:
+                exit_code = ctypes.wintypes.DWORD()
+                if not ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                    return False
+                return exit_code.value == still_active
+            finally:
+                ctypes.windll.kernel32.CloseHandle(handle)
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
 
     def run_pending(self, processor: JobProcessor, stop_on_error: bool = False) -> None:
         self.recover_interrupted()
@@ -186,7 +242,10 @@ class JobManager:
             job = self._next_pending()
             if job is None:
                 return
-            self._update(job.job_id, status=JobStatus.RUNNING, started_at=self._now(), error_message=None)
+            self._update(
+                job.job_id, status=JobStatus.RUNNING, started_at=self._now(),
+                error_message=None, pid=os.getpid(),
+            )
             try:
                 processor(self.get(job.job_id), lambda stage: self._update(job.job_id, stage=stage))
             except Exception as error:
@@ -225,7 +284,13 @@ class JobManager:
             connection.execute("""CREATE TABLE IF NOT EXISTS jobs (
                 job_id TEXT PRIMARY KEY, theme TEXT NOT NULL, template TEXT NOT NULL, created_at TEXT NOT NULL,
                 started_at TEXT, finished_at TEXT, status TEXT NOT NULL, stage TEXT, output_dir TEXT NOT NULL,
-                error_message TEXT, retry_count INTEGER NOT NULL DEFAULT 0)""")
+                error_message TEXT, retry_count INTEGER NOT NULL DEFAULT 0, pid INTEGER)""")
+            # 既存DB（pid列追加前に作成済み）を後方互換で移行する。
+            existing_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(jobs)").fetchall()
+            }
+            if "pid" not in existing_columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN pid INTEGER")
             connection.execute("""CREATE TABLE IF NOT EXISTS youtube_uploads (
                 job_id TEXT PRIMARY KEY, video_id TEXT NOT NULL, uploaded_at TEXT NOT NULL,
                 privacy TEXT NOT NULL, publish_at TEXT, url TEXT NOT NULL, status TEXT NOT NULL,
@@ -248,4 +313,5 @@ class JobManager:
     @staticmethod
     def _from_row(row: sqlite3.Row) -> Job:
         return Job(row["job_id"], row["theme"], row["template"], row["created_at"], row["started_at"], row["finished_at"],
-            JobStatus(row["status"]), JobStage(row["stage"]) if row["stage"] else None, Path(row["output_dir"]), row["error_message"], row["retry_count"])
+            JobStatus(row["status"]), JobStage(row["stage"]) if row["stage"] else None, Path(row["output_dir"]),
+            row["error_message"], row["retry_count"], row["pid"])
