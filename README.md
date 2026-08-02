@@ -752,6 +752,8 @@ image:
 
 動画1本につきOpenAI APIを1回のみ呼び出し、全シーン分をまとめて生成します（追加課金あり）。実装は`OpenAISceneVisualDescriber`（[openai_scene_visual_describer.py](src/youtube_generator/infrastructure/openai_scene_visual_describer.py)）です。
 
+生成した場面説明は、ナレーション文＋`scene_description`設定単位で独立してキャッシュされます（`CachingSceneVisualDescriber`）。これにより、画像生成側の設定（`qwen_image_nunchaku_local`等）だけを変更して`--generate-images`を再実行するような場合でも、シーン画像自体のキャッシュはミスしますが、ナレーション文が変わっていなければ場面説明のAPI呼び出しは発生しません。
+
 ## シーン画像の後処理でキャプション帯を除去する（scene_edit）
 
 生成したシーン画像に字幕・キャプション風の文字が写り込んだ場合、Qwen-Image-Edit（nunchaku 4bit量子化版）による編集ステップで除去できます。既定は無効です。

@@ -23,6 +23,7 @@ from youtube_generator.app.generate_thumbnail import GenerateThumbnailUseCase
 from youtube_generator.config import load_settings
 from youtube_generator.exceptions import AlignmentGenerationError
 from youtube_generator.infrastructure.cache import CacheManager
+from youtube_generator.infrastructure.caching_scene_visual_describer import CachingSceneVisualDescriber
 from youtube_generator.infrastructure.history import RunHistoryRecorder
 from youtube_generator.logger import Logger, configure_logging, get_logger, set_active_logger
 from youtube_generator.infrastructure.ffprobe_audio_duration_provider import FfprobeAudioDurationProvider
@@ -616,6 +617,25 @@ def run() -> None:
             scene_visual_describer = plugin_manager.create_scene_visual_describer(
                 image_settings, retry_policy,
             )
+            # scene_description.modelがnullの場合はtext.scene_split_modelへフォールバックするため
+            # （create_scene_visual_describer参照）、実際に使用されるモデル名を明示的に含める。
+            scene_description_enabled = scene_visual_describer is not None
+            scene_description_model = (
+                str(image_settings.get("scene_description", {}).get("model") or text_settings.get("scene_split_model"))
+                if scene_description_enabled else ""
+            )
+            if scene_visual_describer is not None and cache_manager is not None:
+                # シーン画像自体のキャッシュ（image_cache_key）は画像生成側の設定変更でも
+                # 無効化されるが、場面説明（OpenAI API呼び出し・追加課金あり）はナレーション文と
+                # scene_description設定が変わらない限り再実行不要なため、独立してキャッシュする。
+                # これにより「画像生成の設定だけを変えて--generate-imagesを再実行する」場面でも、
+                # 不要なAPI呼び出しが発生しなくなる。
+                description_fingerprint = CacheManager.make_key(
+                    "scene-description-cache-v1", scene_description_model,
+                )
+                scene_visual_describer = CachingSceneVisualDescriber(
+                    scene_visual_describer, cache_manager, description_fingerprint,
+                )
             image_style = template.image_style or str(image_settings["style"])
             use_case = GenerateSceneImagesUseCase(
                 ImagePromptBuilder(image_style),
@@ -634,13 +654,6 @@ def run() -> None:
                 key: value for key, value in image_settings.items()
                 if key not in {"thumbnail_model", "thumbnail_size", "scene_edit"}
             }
-            # scene_description.modelがnullの場合はtext.scene_split_modelへフォールバックするため
-            # （create_scene_visual_describer参照）、実際に使用されるモデル名を明示的に含める。
-            scene_description_enabled = scene_visual_describer is not None
-            scene_description_model = (
-                str(image_settings.get("scene_description", {}).get("model") or text_settings.get("scene_split_model"))
-                if scene_description_enabled else ""
-            )
             image_fingerprint = CacheManager.make_key(
                 plugin_manager.image_provider_name("scene"),
                 json.dumps(scene_image_settings, ensure_ascii=False, sort_keys=True),
