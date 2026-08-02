@@ -11,6 +11,7 @@ transformerのみ量子化版に差し替え、GPU VRAM量に応じてenable_mod
 set_offload+enable_sequential_cpu_offloadを切り替える）に準拠している。
 """
 
+import gc
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -182,6 +183,11 @@ class QwenImageEditNunchakuLocalImageEditor(ImageEditor):
             return
         self._logger.info("Qwen-Image-Edit(nunchaku)ローカルモデルを解放します。")
         self._pipeline = None
+        # enable_sequential_cpu_offload/transformer.set_offloadが張るフックはmodule<->hookの
+        # 参照循環を作るため、self._pipeline = Noneだけでは即座に解放されない場合がある。
+        # 連続して複数画像を編集する・別モデルをロードする前に確実にメモリを解放するため
+        # gc.collect()を明示的に呼ぶ。
+        gc.collect()
         try:
             torch = self._import_torch()
         except ImageEditError:

@@ -18,6 +18,7 @@ GPU VRAM量に応じてenable_model_cpu_offload/set_offload+enable_sequential_cp
 切り替える）に準拠している。
 """
 
+import gc
 import random
 import time
 from dataclasses import dataclass
@@ -180,6 +181,11 @@ class QwenImageNunchakuLocalImageProvider(ImageProvider):
             return
         self._logger.info("Qwen-Image(nunchaku)ローカルモデルを解放します。")
         self._pipeline = None
+        # enable_sequential_cpu_offload/transformer.set_offloadが張るフックはmodule<->hookの
+        # 参照循環を作るため、self._pipeline = Noneだけでは即座に解放されない場合がある。
+        # 次に別の大きなモデル（編集用モデル等）をロードする前に、確実にCPU/GPUメモリを
+        # 解放するためgc.collect()を明示的に呼ぶ。
+        gc.collect()
         try:
             torch = self._import_torch()
         except ImageGenerationError:

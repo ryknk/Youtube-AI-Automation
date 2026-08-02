@@ -135,4 +135,15 @@ class ExistingPipelineRunner:
             on_line(line.rstrip("\n"))
         process.wait()
         if process.returncode != 0:
-            raise RuntimeError("".join(output_lines)[-2000:] or "既存パイプラインが失敗しました。")
+            tail = "".join(output_lines)[-2000:]
+            if "Traceback (most recent call last)" not in tail:
+                # Pythonの例外を伴わない終了（ハングやハードクラッシュ）は、多くの場合
+                # CUDA/システムメモリ不足によるプロセス強制終了が原因のため、原因調査の
+                # 手がかりとしてreturncodeとヒントを付加する。
+                tail = (
+                    f"{tail}\n"
+                    f"[サブプロセスはPythonの例外を出さずにreturncode={process.returncode}で終了しました。"
+                    "CUDA/システムメモリ不足によるプロセスの強制終了の可能性があります。"
+                    "rankを下げる、offload_threshold_gbを下げる等を検討してください。]"
+                )
+            raise RuntimeError(tail or "既存パイプラインが失敗しました。")
