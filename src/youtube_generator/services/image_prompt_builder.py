@@ -21,7 +21,8 @@ class ImagePromptBuilder:
         narration_text = _QUOTE_MARKERS.sub("", cleaned_text)
         return (
             "Use case: a single wide illustration used as narrated video background art.\n"
-            "Format: 16:9 landscape illustration.\n"
+            "Format: widescreen landscape illustration, image content filling the entire frame "
+            "edge to edge.\n"
             f"Primary request: Visually depict the situation and mood of this Japanese narration "
             f"scene: {narration_text}\n"
             f"Style/medium: {self._style}. Follow this template-specific medium and style exactly.\n"
@@ -36,6 +37,6 @@ class ImagePromptBuilder:
             "features, hairstyles, and attire appropriate to the scene.\n"
             "Dialogue/thoughts: convey any spoken lines or inner thoughts purely through facial "
             "expression, gaze, posture, body language, and the surrounding situation.\n"
-            "Constraints: 16:9 landscape image, maintain the specified style consistently across "
-            "all scenes."
+            "Constraints: widescreen landscape image filling the entire frame edge to edge, "
+            "maintain the specified style consistently across all scenes."
         )
