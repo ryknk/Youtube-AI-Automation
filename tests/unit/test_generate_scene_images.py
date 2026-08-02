@@ -318,6 +318,49 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 use_case.execute(scenes_dir)
 
+    def test_precomputed_description_files_are_used_without_calling_describer(self) -> None:
+        """--generate-scene-descriptionsが書き出したsceneNN_MM.description.txtが揃っていれば、
+        --generate-images側はOpenAI APIを呼ばずにそれを使う。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            (scenes_dir / "scene01_01.description.txt").write_text("A calm morning scene.", encoding="utf-8")
+            (scenes_dir / "scene02_01.description.txt").write_text("A busy evening street.", encoding="utf-8")
+            generator = MockImageProvider()
+            describer = FakeSceneVisualDescriber()
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), generator,
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+                scene_visual_describer=describer,
+            )
+
+            use_case.execute(scenes_dir)
+
+            self.assertEqual(describer.call_count, 0)
+            self.assertIn("A calm morning scene.", generator.prompts[0])
+            self.assertIn("A busy evening street.", generator.prompts[1])
+
+    def test_partial_precomputed_description_files_fall_back_to_describer(self) -> None:
+        """一部の場面説明ファイルしか無い場合は、まとめて1回で呼び出す方針を崩さないよう
+        フォールバックしてdescriber側でまとめて生成する。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            (scenes_dir / "scene01_01.description.txt").write_text("A calm morning scene.", encoding="utf-8")
+            describer = FakeSceneVisualDescriber()
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("style"), MockImageProvider(),
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+                scene_visual_describer=describer,
+            )
+
+            use_case.execute(scenes_dir)
+
+            self.assertEqual(describer.call_count, 1)
+            self.assertEqual(describer.received, ("1番目の場面", "2番目の場面"))
+
     def test_without_scene_visual_describer_uses_narration_text_directly(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             scenes_dir = Path(temporary_directory)

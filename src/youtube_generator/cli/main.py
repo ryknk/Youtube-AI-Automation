@@ -15,6 +15,7 @@ from openai import OpenAIError
 from youtube_generator.app.generate_script import GenerateScriptUseCase
 from youtube_generator.app.split_script import SplitScriptUseCase
 from youtube_generator.app.generate_scene_audio import GenerateSceneAudioUseCase
+from youtube_generator.app.generate_scene_descriptions import GenerateSceneDescriptionsUseCase
 from youtube_generator.app.generate_scene_images import GenerateSceneImagesUseCase
 from youtube_generator.app.generate_subtitles import GenerateSubtitlesUseCase
 from youtube_generator.app.generate_video import GenerateVideoUseCase
@@ -95,6 +96,10 @@ def create_parser() -> argparse.ArgumentParser:
     input_group.add_argument("--theme", help="台本を生成する動画テーマ")
     input_group.add_argument("--split-script", type=Path, help="分割する script.txt のパス")
     input_group.add_argument("--generate-audio", type=Path, help="sceneNN.txt があるフォルダのパス")
+    input_group.add_argument(
+        "--generate-scene-descriptions", type=Path,
+        help="sceneNN.txt があるフォルダのパス（画像プロンプト用の場面説明のみを生成）",
+    )
     input_group.add_argument("--generate-images", type=Path, help="sceneNN.txt があるフォルダのパス")
     input_group.add_argument("--edit-images", type=Path, help="sceneNN_MM.png があるフォルダのパス")
     input_group.add_argument("--generate-subtitles", type=Path, help="sceneNN.mp3 があるフォルダのパス")
@@ -109,7 +114,8 @@ def create_parser() -> argparse.ArgumentParser:
         "--force", action="store_true",
         help=(
             "キャッシュ・既存ファイルを無視して強制的に再生成します"
-            "（--generate-video/--generate-images/--edit-imagesで使用）。"
+            "（--generate-video/--generate-scene-descriptions/--generate-images/"
+            "--edit-imagesで使用）。"
         ),
     )
     parser.add_argument("--version", action="version", version="Youtube AI Automation 0.1.0")
@@ -195,6 +201,8 @@ def run() -> None:
             logger.info("音声化対象のフォルダ: %s", args.generate_audio)
             if settings.openai_api_key is None:
                 raise ValueError("OPENAI_API_KEY が未設定です。.env に設定してください。")
+        if args.generate_scene_descriptions:
+            logger.info("場面説明生成対象のフォルダ: %s", args.generate_scene_descriptions)
         if args.generate_images:
             logger.info("画像化対象のフォルダ: %s", args.generate_images)
         if args.edit_images:
@@ -599,6 +607,40 @@ def run() -> None:
 
             history.record(run_id, "run_completed")
             for file_path in audio_files:
+                execution_logger.add_generated_file(file_path)
+            execution_logger.finish(success=True)
+            set_active_logger(None)
+            return
+
+        if args.generate_scene_descriptions:
+            retry_settings = video_settings.values["retry"]
+            image_settings = video_settings.values["image"]
+            quality_values = video_settings.values["quality"]
+            if not isinstance(retry_settings, dict) or not isinstance(image_settings, dict):
+                raise ValueError("config.yaml の retry または image 設定が不正です。")
+            if not isinstance(quality_values, dict):
+                raise ValueError("config.yaml の quality 設定が不正です。")
+            scene_visual_describer = plugin_manager.create_scene_visual_describer(
+                image_settings, RetryPolicy.from_settings(retry_settings),
+            )
+            # --generate-imagesと異なりCachingSceneVisualDescriberでは包まない。この工程自体が
+            # sceneNN_MM.description.txt単位のキャッシュ層であり、--forceはOpenAI APIへの
+            # 再呼び出しを保証する必要があるため（内側にコンテンツハッシュキャッシュを挟むと
+            # --force指定時でも同じナレーション文からの再呼び出しがキャッシュヒットしてしまう）。
+            use_case = GenerateSceneDescriptionsUseCase(
+                scene_visual_describer,
+                min_display_seconds=float(image_settings.get("min_display_seconds", 5.0)),
+                max_display_seconds=float(image_settings.get("max_display_seconds", 10.0)),
+                characters_per_second=float(quality_values["characters_per_second"]),
+                max_images=int(image_settings["max_count"]),
+            )
+            description_files = use_case.execute(args.generate_scene_descriptions, force=args.force)
+            logger.info("%d件の場面説明ファイルを生成しました。", len(description_files))
+            history.record(
+                run_id, "scene_descriptions_generated", description_count=len(description_files),
+            )
+            history.record(run_id, "run_completed")
+            for file_path in description_files:
                 execution_logger.add_generated_file(file_path)
             execution_logger.finish(success=True)
             set_active_logger(None)

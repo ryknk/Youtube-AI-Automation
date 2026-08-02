@@ -59,16 +59,10 @@ class GenerateSceneImagesUseCase:
 
         force=Trueの場合、既存の画像ファイルの有無を無視してすべて生成し直す。
         """
-        scene_files = self._find_scene_files(scenes_dir)
-        if not scene_files:
-            raise FileNotFoundError(f"sceneNN.txt が見つかりません: {scenes_dir}")
-
-        plan: list[tuple[ImageWindow, Path]] = []
-        for scene_id, scene_file in enumerate(scene_files[:self._max_images], 1):
-            text = scene_file.read_text(encoding="utf-8-sig")
-            for sub_index, window in enumerate(self._resolve_windows(text, scene_id), 1):
-                image_file = scene_file.with_name(f"{scene_file.stem}_{sub_index:02d}.png")
-                plan.append((window, image_file))
+        plan = self.build_plan(
+            scenes_dir, self._min_display_seconds, self._max_display_seconds,
+            self._characters_per_second, self._max_images,
+        )
 
         total = len(plan)
         # 中断されたジョブの再試行等で一部の画像が既に生成済みの場合、同名ファイルが既に
@@ -78,7 +72,7 @@ class GenerateSceneImagesUseCase:
         skipped = total - len(pending)
         if skipped:
             self._logger.info("生成済みの画像 %d/%d 件をスキップします。", skipped, total)
-        prompt_sources = self._describe_scenes(tuple(window.text for window, _ in pending))
+        prompt_sources = self._describe_scenes(tuple(pending))
         image_files: list[Path] = [image_file for _, image_file in plan]
         for progress, ((window, image_file), prompt_source) in enumerate(
             zip(pending, prompt_sources), 1,
@@ -103,10 +97,17 @@ class GenerateSceneImagesUseCase:
         if callable(release):
             release()
 
-    def _describe_scenes(self, narration_texts: tuple[str, ...]) -> tuple[str, ...]:
+    def _describe_scenes(self, pending: tuple[tuple[ImageWindow, Path], ...]) -> tuple[str, ...]:
         """設定されていれば動画1本分をまとめて1回のAPI呼び出しで英語の場面説明へ変換し、
         生の日本語ナレーション文が画像プロンプトへ直接渡ることによる字幕的な文字描画を避ける。
-        未設定時は従来どおり原文をそのまま返す。"""
+        未設定時は従来どおり原文をそのまま返す。
+
+        GenerateSceneDescriptionsUseCase（--generate-scene-descriptions）が独立した工程として
+        sceneNN_MM.description.txtを書き出し済みの場合は、それを使いAPI呼び出しを省略する。"""
+        narration_texts = tuple(window.text for window, _ in pending)
+        precomputed = self._load_precomputed_descriptions(pending)
+        if precomputed is not None:
+            return precomputed
         if self._scene_visual_describer is None:
             return narration_texts
         descriptions = self._scene_visual_describer.describe_scenes(narration_texts)
@@ -117,11 +118,61 @@ class GenerateSceneImagesUseCase:
             )
         return descriptions
 
-    def _resolve_windows(self, text: str, scene_id: int) -> tuple[ImageWindow, ...]:
+    def _load_precomputed_descriptions(
+        self, pending: tuple[tuple[ImageWindow, Path], ...],
+    ) -> tuple[str, ...] | None:
+        if self._scene_visual_describer is None or not pending:
+            return None
+        description_files = [self.description_file_for(image_file) for _, image_file in pending]
+        if not all(description_file.is_file() for description_file in description_files):
+            return None
+        return tuple(
+            description_file.read_text(encoding="utf-8-sig").strip() for description_file in description_files
+        )
+
+    @staticmethod
+    def description_file_for(image_file: Path) -> Path:
+        """画像ファイルパスから、対応する場面説明ファイル（sceneNN_MM.description.txt）を求める。
+        GenerateSceneDescriptionsUseCaseとの間で共有する命名規則。"""
+        return image_file.with_name(f"{image_file.stem}.description.txt")
+
+    @classmethod
+    def build_plan(
+        cls,
+        scenes_dir: Path,
+        min_display_seconds: float,
+        max_display_seconds: float,
+        characters_per_second: float,
+        max_images: int = 8,
+    ) -> tuple[tuple[ImageWindow, Path], ...]:
+        """sceneNN.txtから、画像1枚ごとの(ImageWindow, 出力先パス)計画を組み立てる。
+
+        GenerateSceneImagesUseCase.execute()とGenerateSceneDescriptionsUseCase.execute()が
+        同一の枚数・区切り・ファイル名を共有するための共通処理。"""
+        scene_files = cls._find_scene_files(scenes_dir)
+        if not scene_files:
+            raise FileNotFoundError(f"sceneNN.txt が見つかりません: {scenes_dir}")
+
+        plan: list[tuple[ImageWindow, Path]] = []
+        for scene_id, scene_file in enumerate(scene_files[:max_images], 1):
+            text = scene_file.read_text(encoding="utf-8-sig")
+            windows = cls._resolve_windows(
+                text, scene_id, min_display_seconds, max_display_seconds, characters_per_second,
+            )
+            for sub_index, window in enumerate(windows, 1):
+                image_file = scene_file.with_name(f"{scene_file.stem}_{sub_index:02d}.png")
+                plan.append((window, image_file))
+        return tuple(plan)
+
+    @staticmethod
+    def _resolve_windows(
+        text: str, scene_id: int, min_display_seconds: float, max_display_seconds: float,
+        characters_per_second: float,
+    ) -> tuple[ImageWindow, ...]:
         normalized = re.sub(r"\s+", "", text)
-        duration = max(len(normalized) / self._characters_per_second, 0.1)
+        duration = max(len(normalized) / characters_per_second, 0.1)
         segments = build_scene_segments(text, duration, scene_id)
-        windows = group_into_image_windows(segments, self._min_display_seconds, self._max_display_seconds)
+        windows = group_into_image_windows(segments, min_display_seconds, max_display_seconds)
         if windows:
             return windows
         return (ImageWindow(text=normalized, start_time=0.0, end_time=duration),)

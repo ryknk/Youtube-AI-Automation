@@ -233,6 +233,7 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 .\run.cmd --split-script "$workDir\script.txt" --template science
 .\run.cmd --generate-audio "$workDir" --template science
+.\run.cmd --generate-scene-descriptions "$workDir" --template science
 .\run.cmd --generate-images "$workDir" --template science
 .\run.cmd --edit-images "$workDir" --template science
 .\run.cmd --generate-subtitles "$workDir" --template science
@@ -242,6 +243,8 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 ```
 
 `--template`には台本生成時と同じIDを指定してください。テンプレートが異なると、画像・タイトル・サムネイルの生成方針も変わります。メタデータ生成では、タイトル生成に動画テーマを反映するため`--topic`も指定してください。ジョブ実行時はジョブのテーマが自動的に渡されます。`--theme`、`--split-script`、各`--generate-*`・`--edit-images`は同時指定できないため、工程ごとに個別実行します。
+
+`--generate-scene-descriptions`は、[後述の`scene_description`](#シーン画像プロンプト用の場面説明生成scene_description)が有効な場合に、画像プロンプト用の場面説明（`sceneNN_MM.description.txt`）だけを独立して生成する任意の工程です。省略しても`--generate-images`実行時に内部で同様の呼び出しが行われるため、キューを使わずに1件実行する場合も必須ではありません。画像生成側の設定だけを変更して`--generate-images`をやり直したい場合や、場面説明だけを`--force`で再生成したい場合に、この工程を独立して呼び出せます。
 
 `--generate-images`はシーン画像の生成のみを行います。`--edit-images`は生成済みの`scene*.png`に対する後述の[キャプション帯除去（scene_edit）](#シーン画像の後処理でキャプション帯を除去するscene_edit)のみを行う別コマンドです。2つのモデルを同一プロセス内で交互にロードするとVRAM/システムメモリを圧迫しやすいため、あえて別プロセス（別コマンド）に分離しています。`image.scene_edit.enabled`が`false`（既定）の場合、`--edit-images`は何もせず終了します。
 
@@ -804,6 +807,18 @@ image:
 動画1本につきOpenAI APIを1回のみ呼び出し、全シーン分をまとめて生成します（追加課金あり）。実装は`OpenAISceneVisualDescriber`（[openai_scene_visual_describer.py](src/youtube_generator/infrastructure/openai_scene_visual_describer.py)）です。
 
 生成した場面説明は、ナレーション文＋`scene_description`設定単位で独立してキャッシュされます（`CachingSceneVisualDescriber`）。これにより、画像生成側の設定（`qwen_image_nunchaku_local`等）だけを変更して`--generate-images`を再実行するような場合でも、シーン画像自体のキャッシュはミスしますが、ナレーション文が変わっていなければ場面説明のAPI呼び出しは発生しません。
+
+場面説明は`--generate-scene-descriptions`で独立した工程としても生成できます（`--generate-audio`の後、`--generate-images`の前に実行する想定）。
+
+```powershell
+.\run.cmd --generate-scene-descriptions "$workDir" --template science
+```
+
+各画像window（`sceneNN_MM.png`に対応）ごとに`sceneNN_MM.description.txt`として保存され、`--generate-images`はこのファイルが揃っていればOpenAI APIを呼ばずにそのまま使います。同じ作業フォルダに対する再実行時は、既に生成済みの`.description.txt`はスキップされます。場面説明だけを明示的に再生成したい場合は`--force`を付けてください。この場合`CachingSceneVisualDescriber`のコンテンツハッシュキャッシュも経由せず、必ずOpenAI APIを再呼び出しします。
+
+```powershell
+.\run.cmd --generate-scene-descriptions "$workDir" --template science --force
+```
 
 ## シーン画像の後処理でキャプション帯を除去する（scene_edit）
 
