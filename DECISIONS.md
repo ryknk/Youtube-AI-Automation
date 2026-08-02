@@ -313,6 +313,42 @@
 
 ---
 
+## ジョブ再試行時の画像生成・編集を、既存ファイル判定と編集済みマーカーで部分再開できるようにした
+
+**課題**: `--generate-images`/`--edit-images`はいずれもバッチ単位（全件成功して初めて）でしかキャッシュを保存しないため、生成・編集の途中でプロセスが強制終了された場合（生成用モデルと編集用モデルの切り替え時にVRAM/システムメモリを圧迫しハングし得ることは既知）、キューからのジョブ再試行時にキャッシュmiss扱いとなり、既に完了していた画像まで最初から生成・編集し直していた。
+
+**決定**: `GenerateSceneImagesUseCase.execute()`は出力先の`sceneNN_MM.png`が既に存在する画像の生成をスキップするようにした。`--generate-images`側は、作業フォルダに既存の`scene*.png`がある場合はキャッシュからの復元（上書き）を行わず既存ファイルを活かして不足分のみ生成する（復元による編集済み内容の上書き事故を防止）。`--edit-images`側は画像ごとに編集済みマーカー（`sceneNN_MM.png.edited`、編集キー入り）を新設し、同じ編集設定で既に編集済みの画像はスキップする（編集は破壊的処理のため二重編集は画質劣化を招く）。
+
+**理由**: CLAUDE.mdの「設定変更時は必要最小限のみ再生成すること」「不要な再生成は禁止」に従うため。既存のバッチ単位キャッシュ機構（`CacheManager`）はそのまま維持し、中断からの部分再開のみを追加する形にすることで変更範囲を最小限にした。
+
+**参照**: [generate_scene_images.py](src/youtube_generator/app/generate_scene_images.py)、[cli/main.py](src/youtube_generator/cli/main.py)の`args.generate_images`/`args.edit_images`分岐。
+
+---
+
+## `queue`コマンド実行時にRUNNINGジョブをPID生存確認付きで自動回収するようにした
+
+**課題**: `recover_interrupted()`（RUNNINGのまま残ったジョブをPENDINGへ戻す処理）は`queue run`（`run_pending()`）内でしか呼ばれておらず、PowerShellを閉じる等でプロセスが強制終了されると、ジョブはDB上`RUNNING`のまま残り続けた。`retry`/`cancel`/`delete`はいずれも`RUNNING`状態のジョブを拒否する実装のため、次に`queue run`を実行しない限り復旧不可能だった。
+
+**決定**: `jobs`テーブルに`pid`列を追加（既存DBはマイグレーションで自動追加）し、`run_pending()`実行時に自プロセスのPIDを記録するようにした。`recover_interrupted()`はPIDが生存していないジョブのみをPENDINGへ回収するよう変更し、`cli/queue.py`の`manager`生成直後、すべてのサブコマンド（`add`/`list`/`retry`/`cancel`/`delete`等）の実行前に呼ぶようにした。
+
+**却下した代替案**: 単純に「RUNNINGなら全部PENDINGへ戻す」実装を全コマンドから呼ぶ案も検討したが、別ターミナルで実際に`queue run`が稼働中のジョブまで誤って巻き戻し、二重実行（同じジョブが同時に2回処理される）を招く恐れがあるため採用しなかった。
+
+**理由**: PID生存確認（Windows API `OpenProcess`+`GetExitCodeProcess`）により、「プロセスが強制終了された中断」と「別プロセスで実際に実行中」を区別できるため。PIDは再利用され得るため、プロセス終了後に別プロセスが同じPIDを取得した場合に誤判定する可能性は既知の限界としてコード内に明記している。
+
+**参照**: [jobs/manager.py](src/youtube_generator/jobs/manager.py)の`recover_interrupted()`/`_is_process_alive()`、[cli/queue.py](src/youtube_generator/cli/queue.py)。
+
+---
+
+## `--force`フラグを`--generate-images`/`--edit-images`にも適用
+
+**課題**: 中断ジョブの部分再開機能（既存ファイル判定・編集済みマーカー）を追加した結果、`--generate-images`/`--edit-images`を同じ作業フォルダに対して再実行すると常にスキップ判定が優先され、意図的にすべて生成・編集し直す手段がなくなった。
+
+**決定**: 既存の`--generate-video`と同じ`--force`フラグを`--generate-images`/`--edit-images`でも参照するようにした。`--force`指定時は既存ファイル・キャッシュの状態を無視し、常に全件生成・編集し直す。
+
+**理由**: 「`--generate-video`に`--force`フラグを追加」した際と同じ考え方（既存の類似オプションとの一貫性）に基づく。
+
+---
+
 ## 関連ドキュメント
 
 - [CLAUDE.md](CLAUDE.md) — 開発方針・アーキテクチャ・コーディング規約

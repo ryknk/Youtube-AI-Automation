@@ -216,6 +216,8 @@ CSVは`theme,template`ヘッダー、JSONは`theme`と`template`を持つオブ�
 
 `config/config.yaml`の`queue.skip_thumbnail`を`true`にすると、キュー実行時のサムネイル生成工程（API呼び出し・成果物コピー）をスキップできます。画像生成中は`画像生成: (n/総数)`という進捗がジョブごとにログ出力されます。
 
+PowerShellを閉じるなどで`queue run`のプロセスが強制終了された場合、該当ジョブは`RUNNING`のまま残りますが、次にいずれかの`queue`コマンド（`list`/`retry`/`cancel`/`delete`/`run`等）を実行した時点で自動的に`PENDING`へ戻され、`retry`/`cancel`/`delete`が行えるようになります。別ターミナルで実際に`queue run`が稼働中のジョブは、そのプロセスが生存している限り誤って巻き戻されることはありません。
+
 ## キューを使わずに1件実行する
 
 キューを使用しない場合は、対象動画の各工程を順番に実行します。まず台本を生成します。
@@ -242,6 +244,13 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 `--template`には台本生成時と同じIDを指定してください。テンプレートが異なると、画像・タイトル・サムネイルの生成方針も変わります。メタデータ生成では、タイトル生成に動画テーマを反映するため`--topic`も指定してください。ジョブ実行時はジョブのテーマが自動的に渡されます。`--theme`、`--split-script`、各`--generate-*`・`--edit-images`は同時指定できないため、工程ごとに個別実行します。
 
 `--generate-images`はシーン画像の生成のみを行います。`--edit-images`は生成済みの`scene*.png`に対する後述の[キャプション帯除去（scene_edit）](#シーン画像の後処理でキャプション帯を除去するscene_edit)のみを行う別コマンドです。2つのモデルを同一プロセス内で交互にロードするとVRAM/システムメモリを圧迫しやすいため、あえて別プロセス（別コマンド）に分離しています。`image.scene_edit.enabled`が`false`（既定）の場合、`--edit-images`は何もせず終了します。
+
+中断されたジョブの再試行等で`--generate-images`/`--edit-images`を同じ作業フォルダに対して再実行した場合、既に生成済みの`sceneNN_MM.png`や、同じ編集設定で既に編集済みの画像はスキップされ、未処理分のみが処理されます（無駄なAPI課金・GPU処理を避けるため）。キャッシュ・既存ファイルの状態を無視してすべて生成・編集し直したい場合は`--force`を付けてください。
+
+```powershell
+.\run.cmd --generate-images "$workDir" --template science --force
+.\run.cmd --edit-images "$workDir" --template science --force
+```
 
 台本、シーン分割、音声、画像、メタデータ、サムネイルの生成では外部API利用料が発生します。字幕生成と動画レンダリングはローカルのFFmpegを使用します。
 
@@ -775,7 +784,7 @@ image:
 .\run.cmd --edit-images "$workDir" --template science
 ```
 
-`--edit-images`は`--generate-images`が対象フォルダへ書き出す生成キャッシュキー（`.image_cache_key`）と編集設定からキャッシュキーを組み立てるため、`--generate-images`より先に単独で実行することはできません。編集結果も`cache/`に保存され、生成設定・編集設定のいずれも変わっていなければ再編集をスキップします。
+`--edit-images`は`--generate-images`が対象フォルダへ書き出す生成キャッシュキー（`.image_cache_key`）と編集設定からキャッシュキーを組み立てるため、`--generate-images`より先に単独で実行することはできません。編集結果も`cache/`に保存され、生成設定・編集設定のいずれも変わっていなければ再編集をスキップします。同じ作業フォルダに対する再実行時は、画像単位でも既に同じ編集設定で編集済みのものはスキップされます（中断されたジョブの再試行時に二重編集を避けるため）。`--force`を付けるとキャッシュ・スキップ判定を無視してすべて再編集します。
 
 編集時の推論解像度は既定で自動決定されます。シーン画像は生成解像度（例: 1664x928）のまま保存されるため、通常は画像ファイル自体のサイズがそのまま編集解像度になりますが、`providers.image.scene`で選択中の画像生成プロバイダー（`qwen_image_local`/`qwen_image_nunchaku_local`など、`width`/`height`設定を持つものであればどれでも対象）の`width`/`height`設定を自動的に参照する仕組みにより、生成側の設定変更に編集側が追従し、config.yaml内での二重管理を避けています。編集後は編集対象画像と同じ解像度へ戻して保存するため、最終的な出力サイズは変わりません。BFL/OpenAIのように`width`/`height`という概念を持たないプロバイダーを選択している場合は自動決定できず、従来どおり編集対象画像自身の解像度でそのまま推論します。
 
