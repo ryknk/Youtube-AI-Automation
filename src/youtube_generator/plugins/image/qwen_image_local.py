@@ -5,6 +5,7 @@ Hugging Face Diffusersを利用する。torch/diffusersはSelf-host専用の任�
 モジュール読み込み時ではなく実際に利用する箇所（モデルロード時）で遅延importする。
 """
 
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -21,6 +22,28 @@ from youtube_generator.services.image_artifact_detector import has_letterbox_bar
 
 
 DEFAULT_MODEL_ID = "Qwen/Qwen-Image"
+DEFAULT_LIGHTNING_LORA_REPO_ID = "lightx2v/Qwen-Image-Lightning"
+DEFAULT_LIGHTNING_LORA_WEIGHT_NAME = "Qwen-Image-Lightning-8steps-V2.0.safetensors"
+# Qwen-Image-Lightning公式サンプル（https://github.com/ModelTC/Qwen-Image-Lightning/
+# blob/main/generate_with_diffusers.py）のscheduler_configをそのまま使用する。
+# Lightning LoRAはこの専用scheduler設定（shift=1.0, use_dynamic_shifting=True等）を
+# 前提に蒸留されているため、既定のscheduler設定のままでは正しく動作しない。
+_LIGHTNING_LORA_SCHEDULER_CONFIG: dict[str, Any] = {
+    "base_image_seq_len": 256,
+    "base_shift": math.log(3),
+    "invert_sigmas": False,
+    "max_image_seq_len": 8192,
+    "max_shift": math.log(3),
+    "num_train_timesteps": 1000,
+    "shift": 1.0,
+    "shift_terminal": None,
+    "stochastic_sampling": False,
+    "time_shift_type": "exponential",
+    "use_beta_sigmas": False,
+    "use_dynamic_shifting": True,
+    "use_exponential_sigmas": False,
+    "use_karras_sigmas": False,
+}
 _ALLOWED_DEVICES = {"auto", "cuda", "cpu", "mps"}
 _ALLOWED_DTYPES = {"auto", "float16", "bfloat16", "float32"}
 # レターボックス帯（上下の黒帯）を検出した場合の再生成回数上限（初回+再試行1回）。
@@ -61,6 +84,14 @@ class QwenImageLocalSettings:
     # 生成画像の上下端に黒帯（レターボックス）を検出した場合、別seedで自動再生成するか。
     # falseにすると検出・再生成を一切行わず、常に1回のみ生成する。
     letterbox_detection_enabled: bool = True
+    # Qwen-Image-Lightning LoRA（https://huggingface.co/lightx2v/Qwen-Image-Lightning）を
+    # 適用し、8 stepsでの高速推論を行うか（公式実測で12〜25倍高速。ただし細かい質感・
+    # 密集した文字表現の精度は下がる場合がある）。有効にする場合は
+    # num_inference_steps: 8, true_cfg_scale: 1.0を併せて設定すること（公式推奨値。
+    # true_cfg_scaleが1.0以外だとロード時に警告ログを出す）。
+    lightning_lora_enabled: bool = False
+    lightning_lora_repo_id: str = DEFAULT_LIGHTNING_LORA_REPO_ID
+    lightning_lora_weight_name: str = DEFAULT_LIGHTNING_LORA_WEIGHT_NAME
 
     @classmethod
     def from_mapping(cls, values: dict[str, Any]) -> "QwenImageLocalSettings":
@@ -93,6 +124,13 @@ class QwenImageLocalSettings:
                 allow_cpu=bool(values.get("allow_cpu", False)),
                 fallback_provider=str(fallback_provider).lower() if fallback_provider else None,
                 letterbox_detection_enabled=bool(values.get("letterbox_detection_enabled", True)),
+                lightning_lora_enabled=bool(values.get("lightning_lora_enabled", False)),
+                lightning_lora_repo_id=str(
+                    values.get("lightning_lora_repo_id", DEFAULT_LIGHTNING_LORA_REPO_ID)
+                ),
+                lightning_lora_weight_name=str(
+                    values.get("lightning_lora_weight_name", DEFAULT_LIGHTNING_LORA_WEIGHT_NAME)
+                ),
             )
         except (TypeError, ValueError) as error:
             raise ValueError(f"config.yaml の image.qwen_image_local 設定が不正です: {error}") from error
@@ -210,14 +248,21 @@ class QwenImageLocalImageProvider(ImageProvider):
         device = self._resolve_device(torch)
         dtype = self._resolve_dtype(torch, device)
         self._logger.info(
-            "Qwen-Imageローカルモデルをロードします: model_id=%s, device=%s, dtype=%s, cache_dir=%s",
+            "Qwen-Imageローカルモデルをロードします: model_id=%s, device=%s, dtype=%s, cache_dir=%s, "
+            "lightning_lora_enabled=%s",
             self._settings.model_id, device, dtype, self._settings.model_cache_dir or "(既定のHFキャッシュ)",
+            self._settings.lightning_lora_enabled,
         )
         started_at = time.perf_counter()
-        try:
-            pipeline = diffusers.DiffusionPipeline.from_pretrained(
-                self._settings.model_id, torch_dtype=dtype, cache_dir=self._settings.model_cache_dir,
+        pipeline_kwargs: dict[str, Any] = {
+            "torch_dtype": dtype, "cache_dir": self._settings.model_cache_dir,
+        }
+        if self._settings.lightning_lora_enabled:
+            pipeline_kwargs["scheduler"] = diffusers.FlowMatchEulerDiscreteScheduler.from_config(
+                _LIGHTNING_LORA_SCHEDULER_CONFIG
             )
+        try:
+            pipeline = diffusers.DiffusionPipeline.from_pretrained(self._settings.model_id, **pipeline_kwargs)
         except Exception as error:  # huggingface_hub/diffusers側の例外は多様なため広く捕捉する
             raise self._wrap_load_error(error) from error
 
@@ -229,6 +274,8 @@ class QwenImageLocalImageProvider(ImageProvider):
             pipeline = pipeline.to(device)
         if self._settings.enable_attention_slicing and hasattr(pipeline, "enable_attention_slicing"):
             pipeline.enable_attention_slicing()
+        if self._settings.lightning_lora_enabled:
+            self._apply_lightning_lora(pipeline)
 
         load_seconds = time.perf_counter() - started_at
         self._logger.info("Qwen-Imageローカルモデルのロードが完了しました: %.2f秒", load_seconds)
@@ -293,6 +340,33 @@ class QwenImageLocalImageProvider(ImageProvider):
         left = (resized_size[0] - self._output_width) // 2
         top = (resized_size[1] - self._output_height) // 2
         return resized.crop((left, top, left + self._output_width, top + self._output_height))
+
+    def _apply_lightning_lora(self, pipeline: Any) -> None:
+        """Qwen-Image-Lightning LoRAをロードする。
+
+        8 steps版は公式に true_cfg_scale=1.0 を推奨しており
+        （https://huggingface.co/lightx2v/Qwen-Image-Lightning）、これより大きい値のままだと
+        LoRAが想定する分布から外れ生成品質が不安定になる。schedulerは_ensure_pipelineで
+        構築時に専用設定へ差し替え済みのため、ここではLoRA重みの適用のみ行う。
+        """
+        if self._settings.true_cfg_scale != 1.0:
+            self._logger.warning(
+                "lightning_lora_enabled=trueですがtrue_cfg_scaleが1.0ではありません（現在値: %s）。"
+                "Qwen-Image-Lightningは公式にtrue_cfg_scale=1.0を推奨しています。"
+                "config.yamlのimage.qwen_image_local.true_cfg_scaleを確認してください。",
+                self._settings.true_cfg_scale,
+            )
+        self._logger.info(
+            "Qwen-Image-Lightning LoRAをロードします: repo_id=%s, weight_name=%s",
+            self._settings.lightning_lora_repo_id, self._settings.lightning_lora_weight_name,
+        )
+        try:
+            pipeline.load_lora_weights(
+                self._settings.lightning_lora_repo_id, weight_name=self._settings.lightning_lora_weight_name,
+                cache_dir=self._settings.model_cache_dir,
+            )
+        except Exception as error:  # huggingface_hub/diffusers側の例外は多様なため広く捕捉する
+            raise self._wrap_load_error(error) from error
 
     def _apply_prompt_suffix(self, prompt: str) -> str:
         """config.yamlで指定された任意の文字列をプロンプト末尾に付加する。"""

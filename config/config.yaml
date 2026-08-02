@@ -219,6 +219,16 @@ image:
     # falseにすると検出・再生成を行わず常に1回のみ生成する（seedを固定している場合は
     # 再生成しても同じ画像になるため、trueでも検出時は警告ログのみで再生成しない）。
     letterbox_detection_enabled: false
+    # Qwen-Image-Lightning LoRA（https://huggingface.co/lightx2v/Qwen-Image-Lightning）を
+    # 有効にすると8 stepsでの高速推論になる（公式実測で12〜25倍高速。ただし細かい質感・
+    # 密集した文字表現の精度は下がる場合がある）。有効化する場合はnum_inference_steps: 8、
+    # true_cfg_scale: 1.0を併せて設定すること（公式推奨値。異なる値のままだと起動時に
+    # 警告ログを出す）。true_cfg_scale=1.0はnegative_promptによる負のガイダンスを実質
+    # 無効化するため、上記negative_promptで抑制している透かし・字幕風文字の写り込み対策が
+    # 弱まる可能性がある点に注意（既存の生成品質を変えないため既定はfalse）。
+    lightning_lora_enabled: false
+    lightning_lora_repo_id: lightx2v/Qwen-Image-Lightning
+    lightning_lora_weight_name: Qwen-Image-Lightning-8steps-V2.0.safetensors
   # Qwen-Image nunchaku(SVDQuant 4bit量子化)版 Self-host（ローカルGPU実行）用の設定。
   # providers.image（またはproviders.image.scene/thumbnail）を qwen_image_nunchaku_local に
   # した場合のみ使用される。CUDA専用（CPU実行は非対応）。詳細はREADME.mdの

@@ -72,13 +72,16 @@ class FakePipelineResult:
 class FakePipeline:
     def __init__(
         self, source_image: Image.Image | list[Image.Image], raise_error: Exception | None = None,
+        lora_error: Exception | None = None,
     ) -> None:
         self._source_images = source_image if isinstance(source_image, list) else [source_image]
         self._raise_error = raise_error
+        self._lora_error = lora_error
         self.calls: list[dict] = []
         self.to_calls: list[str] = []
         self.attention_slicing_enabled = False
         self.cpu_offload_enabled = False
+        self.load_lora_weights_calls: list[dict] = []
 
     def to(self, device: str) -> "FakePipeline":
         self.to_calls.append(device)
@@ -89,6 +92,13 @@ class FakePipeline:
 
     def enable_model_cpu_offload(self) -> None:
         self.cpu_offload_enabled = True
+
+    def load_lora_weights(self, repo_id: str, weight_name: str, cache_dir: str | None = None) -> None:
+        self.load_lora_weights_calls.append({
+            "repo_id": repo_id, "weight_name": weight_name, "cache_dir": cache_dir,
+        })
+        if self._lora_error is not None:
+            raise self._lora_error
 
     def __call__(self, **kwargs):  # type: ignore[no-untyped-def]
         self.calls.append(kwargs)
@@ -106,19 +116,30 @@ class FakeDiffusionPipelineClass:
         self.from_pretrained_calls = 0
         self.from_pretrained_kwargs: list[dict] = []
 
-    def from_pretrained(self, model_id: str, torch_dtype=None, cache_dir=None):  # type: ignore[no-untyped-def]
+    def from_pretrained(self, model_id: str, torch_dtype=None, cache_dir=None, scheduler=None):  # type: ignore[no-untyped-def]
         self.from_pretrained_calls += 1
         self.from_pretrained_kwargs.append({
-            "model_id": model_id, "torch_dtype": torch_dtype, "cache_dir": cache_dir,
+            "model_id": model_id, "torch_dtype": torch_dtype, "cache_dir": cache_dir, "scheduler": scheduler,
         })
         if self._load_error is not None:
             raise self._load_error
         return self._pipeline
 
 
+class FakeScheduler:
+    def __init__(self, config: dict) -> None:
+        self.config = config
+
+
+class FakeFlowMatchEulerDiscreteSchedulerClass:
+    def from_config(self, config: dict) -> FakeScheduler:
+        return FakeScheduler(config)
+
+
 class FakeDiffusers:
     def __init__(self, pipeline: FakePipeline, load_error: Exception | None = None) -> None:
         self.DiffusionPipeline = FakeDiffusionPipelineClass(pipeline, load_error)
+        self.FlowMatchEulerDiscreteScheduler = FakeFlowMatchEulerDiscreteSchedulerClass()
 
 
 class QwenImageLocalSettingsTests(unittest.TestCase):
@@ -135,6 +156,9 @@ class QwenImageLocalSettingsTests(unittest.TestCase):
         self.assertIsNone(settings.fallback_provider)
         self.assertFalse(settings.allow_cpu)
         self.assertTrue(settings.letterbox_detection_enabled)
+        self.assertFalse(settings.lightning_lora_enabled)
+        self.assertEqual(settings.lightning_lora_repo_id, "lightx2v/Qwen-Image-Lightning")
+        self.assertEqual(settings.lightning_lora_weight_name, "Qwen-Image-Lightning-8steps-V2.0.safetensors")
 
     def test_from_mapping_reads_all_fields(self) -> None:
         settings = QwenImageLocalSettings.from_mapping({
@@ -144,7 +168,8 @@ class QwenImageLocalSettingsTests(unittest.TestCase):
             "enable_cpu_offload": True,
             "enable_attention_slicing": True, "low_vram_mode": True,
             "model_cache_dir": "/tmp/cache", "allow_cpu": True, "fallback_provider": "BFL",
-            "letterbox_detection_enabled": False,
+            "letterbox_detection_enabled": False, "lightning_lora_enabled": True,
+            "lightning_lora_repo_id": "org/lora-repo", "lightning_lora_weight_name": "weights.safetensors",
         })
 
         self.assertEqual(settings.model_id, "org/model")
@@ -158,6 +183,9 @@ class QwenImageLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.fallback_provider, "bfl")
         self.assertTrue(settings.allow_cpu)
         self.assertFalse(settings.letterbox_detection_enabled)
+        self.assertTrue(settings.lightning_lora_enabled)
+        self.assertEqual(settings.lightning_lora_repo_id, "org/lora-repo")
+        self.assertEqual(settings.lightning_lora_weight_name, "weights.safetensors")
 
     def test_from_mapping_rejects_invalid_device(self) -> None:
         with self.assertRaises(ValueError):
@@ -228,6 +256,62 @@ class QwenImageLocalImageProviderTests(unittest.TestCase):
             provider.generate_image("a calm landscape", self.output_file)
 
         self.assertEqual(pipeline.calls[0]["prompt"], "a calm landscape")
+
+    def test_lightning_lora_disabled_by_default_skips_lora_and_default_scheduler(self) -> None:
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        provider = QwenImageLocalImageProvider(self.settings, "640x360")
+
+        with patch.object(QwenImageLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(QwenImageLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("prompt", self.output_file)
+
+        self.assertEqual(pipeline.load_lora_weights_calls, [])
+        self.assertIsNone(diffusers_module.DiffusionPipeline.from_pretrained_kwargs[0]["scheduler"])
+
+    def test_lightning_lora_enabled_loads_lora_and_dedicated_scheduler(self) -> None:
+        settings = QwenImageLocalSettings.from_mapping({
+            "seed": 123, "allow_cpu": True, "true_cfg_scale": 1.0, "lightning_lora_enabled": True,
+        })
+        source_image = Image.new("RGB", (800, 600), color="red")
+        pipeline = FakePipeline(source_image)
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        provider = QwenImageLocalImageProvider(settings, "640x360")
+
+        with patch.object(QwenImageLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(QwenImageLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            provider.generate_image("prompt", self.output_file)
+
+        self.assertEqual(pipeline.load_lora_weights_calls, [{
+            "repo_id": "lightx2v/Qwen-Image-Lightning",
+            "weight_name": "Qwen-Image-Lightning-8steps-V2.0.safetensors",
+            "cache_dir": None,
+        }])
+        scheduler = diffusers_module.DiffusionPipeline.from_pretrained_kwargs[0]["scheduler"]
+        self.assertIsInstance(scheduler, FakeScheduler)
+        self.assertEqual(scheduler.config["shift"], 1.0)
+        self.assertTrue(scheduler.config["use_dynamic_shifting"])
+
+    def test_lightning_lora_load_failure_raises_descriptive_error(self) -> None:
+        settings = QwenImageLocalSettings.from_mapping({
+            "seed": 123, "allow_cpu": True, "true_cfg_scale": 1.0, "lightning_lora_enabled": True,
+        })
+        pipeline = FakePipeline(
+            Image.new("RGB", (800, 600)), lora_error=OSError("network unreachable"),
+        )
+        torch_module = FakeTorch(cuda_available=False)
+        diffusers_module = FakeDiffusers(pipeline)
+        provider = QwenImageLocalImageProvider(settings, "640x360")
+
+        with patch.object(QwenImageLocalImageProvider, "_import_torch", staticmethod(lambda: torch_module)), \
+             patch.object(QwenImageLocalImageProvider, "_import_diffusers", staticmethod(lambda: diffusers_module)):
+            with self.assertRaises(ImageGenerationError) as context:
+                provider.generate_image("prompt", self.output_file)
+
+        self.assertIn("network unreachable", str(context.exception))
 
     def test_negative_prompt_is_configurable(self) -> None:
         settings = QwenImageLocalSettings.from_mapping({

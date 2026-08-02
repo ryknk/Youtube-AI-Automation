@@ -349,6 +349,20 @@
 
 ---
 
+## `qwen_image_local`にQwen-Image-Lightning LoRAをオプションとして追加し、既定は無効のままにした
+
+**課題**: ユーザーから[Qwen-Image-Lightning](https://huggingface.co/lightx2v/Qwen-Image-Lightning)（8 stepsで生成できる蒸留LoRA、公式実測で12〜25倍高速）の導入を依頼された。現在アクティブなシーン画像プロバイダーは`qwen_image_local`（`providers.image.scene`）。
+
+**決定**: `QwenImageLocalSettings`へ`lightning_lora_enabled`/`lightning_lora_repo_id`/`lightning_lora_weight_name`を追加し、有効時のみ`pipeline.load_lora_weights()`でLoRAをロードし、公式サンプル（[generate_with_diffusers.py](https://github.com/ModelTC/Qwen-Image-Lightning/blob/main/generate_with_diffusers.py)）と同一の`FlowMatchEulerDiscreteScheduler`設定へ差し替えるようにした。`config.yaml`側の既定値は`lightning_lora_enabled: false`のまま追加し、有効化はユーザーの明示設定に委ねた。
+
+**理由**: Lightning LoRAは公式に`true_cfg_scale=1.0`を推奨しており、これは`negative_prompt`によるガイダンスを実質無効化する（実機ログで`negative_prompt is passed but classifier-free guidance is not enabled since true_cfg_scale <= 1`を確認済み）。現在の`qwen_image_local.negative_prompt`はYouTubeロゴ・字幕風文字の写り込みを抑えるために個別に調整された既存設定であり、既定で有効化すると既存の生成品質（開発方針「既存機能を壊さない」）を無断で変更することになるため。
+
+**動作確認**: 実機（RTX 4070/12GB）でLoRAダウンロード・スケジューラ差し替え・8 steps推論・VAE decode・画像保存まで一連の成功を確認済み（640x368で生成成功）。1664x928（本番相当解像度）では`low_vram_mode: true`使用時にVAE decode段階でCUDA OOMが発生したが、拡散ループ自体は成功しており、テスト時に他アプリがGPUメモリを使用していたことによるVRAM逼迫が原因の可能性が高い（LoRA自体に起因する追加のVRAM増加要因は無い: `true_cfg_scale=1.0`はnegative batch分の計算・メモリを不要にするため、既定の`true_cfg_scale=4.0`よりむしろ軽くなる）。また、`low_vram_mode: true`（sequential CPU offload）環境では1stepあたり約130〜145秒かかっており、ステップ数を50→8に減らしても総生成時間の短縮効果が薄いことも実測で判明した（CPU⇔GPU間の重み転送がボトルネックのため、解像度非依存）。
+
+**参照**: [qwen_image_local.py](src/youtube_generator/plugins/image/qwen_image_local.py)、[README.md](README.md)の「Qwen-Image-Lightning LoRA（高速化・任意）」。
+
+---
+
 ## 関連ドキュメント
 
 - [CLAUDE.md](CLAUDE.md) — 開発方針・アーキテクチャ・コーディング規約

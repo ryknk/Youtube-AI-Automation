@@ -651,6 +651,26 @@ CUDAメモリ不足時はエラーに`model_id`・`device`・`dtype`・生成サ
 
 複数シーンの同時生成によるVRAM不足を避けるため、既定では逐次生成です。
 
+### Qwen-Image-Lightning LoRA（高速化・任意）
+
+[Qwen-Image-Lightning](https://huggingface.co/lightx2v/Qwen-Image-Lightning)は、公式サンプルで`num_inference_steps=50`程度必要なQwen-Imageを、8 stepsで生成できるように蒸留したLoRAです（公式実測で12〜25倍高速。ただし細かい質感や密集した文字表現の精度は下がる場合があります）。既定では無効（`lightning_lora_enabled: false`）です。
+
+```yaml
+image:
+  qwen_image_local:
+    # 有効化する場合、num_inference_steps: 8, true_cfg_scale: 1.0を併せて設定する
+    # （公式推奨値。true_cfg_scaleが1.0以外だとロード時に警告ログを出す）
+    num_inference_steps: 8
+    true_cfg_scale: 1.0
+    lightning_lora_enabled: true
+    lightning_lora_repo_id: lightx2v/Qwen-Image-Lightning
+    lightning_lora_weight_name: Qwen-Image-Lightning-8steps-V2.0.safetensors
+```
+
+有効化すると、LoRAが前提とする専用のscheduler設定（`shift=1.0`, `use_dynamic_shifting=True`等。公式サンプル準拠）へ自動的に差し替わります。`true_cfg_scale: 1.0`は`negative_prompt`によるガイダンスを実質無効化するため、既定の`negative_prompt`で抑制している透かし・字幕風文字の写り込み対策が弱まる可能性がある点に注意してください。
+
+なお、`low_vram_mode: true`（`enable_sequential_cpu_offload`）を使う環境では、1ステップあたりの時間がCPU⇔GPU間の重み転送に支配され、ステップ数を減らしても実測の総生成時間があまり短縮されない場合があります（動作確認時: RTX 4070/12GBで約130〜145秒/step）。Lightning LoRAによる高速化を活かすには、VRAMに余裕がある環境で`low_vram_mode: false`にするか、`enable_cpu_offload`を使うことを検討してください。
+
 ### CPU実行についての注意
 
 GPU（CUDA）が検出できない場合、既定では停止し、原因が分かるエラーを表示します（意図せず長時間のCPU実行が始まったように見えることを防ぐため）。CPU実行を許可する場合は、`image.qwen_image_local.allow_cpu: true`を明示してください。20Bパラメータのモデルのため、CPU実行は極めて低速です。
