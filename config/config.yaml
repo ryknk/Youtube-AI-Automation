@@ -17,7 +17,7 @@ providers:
   tts: voicevox
   # 画像生成のプロバイダー
   image:
-    scene: qwen_image_local
+    scene: qwen_image_nunchaku_local
     thumbnail: bfl
 
 # テキスト生成モデルの設定

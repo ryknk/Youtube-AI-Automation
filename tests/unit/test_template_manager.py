@@ -35,6 +35,29 @@ class TemplateManagerTests(unittest.TestCase):
         self.assertEqual(template.scene_structure, ("導入", "解説"))
         self.assertEqual(template.title_instruction, "タイトル方針")
 
+    def test_loads_provider_specific_prompt_overrides_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            template_dir = Path(temporary_directory) / "default"
+            template_dir.mkdir()
+            (template_dir / "prompt.txt").write_text("台本方針", encoding="utf-8")
+            (template_dir / "image_prompt.txt").write_text("既定の画像方針", encoding="utf-8")
+            (template_dir / "image_prompt.qwen_image_nunchaku_local.txt").write_text(
+                "Qwen専用の画像方針", encoding="utf-8",
+            )
+            (template_dir / "title_prompt.txt").write_text("タイトル方針", encoding="utf-8")
+            (template_dir / "thumbnail_prompt.txt").write_text("既定のサムネイル方針", encoding="utf-8")
+            (template_dir / "thumbnail_prompt.bfl.txt").write_text("BFL専用のサムネイル方針", encoding="utf-8")
+            (template_dir / "video.yaml").write_text("scene_structure: []\n", encoding="utf-8")
+
+            template = TemplateManager(Path(temporary_directory)).get("default")
+
+        self.assertEqual(template.image_style, "既定の画像方針")
+        self.assertEqual(template.image_style_for("qwen_image_nunchaku_local"), "Qwen専用の画像方針")
+        self.assertEqual(template.image_style_for("bfl"), "既定の画像方針")
+        self.assertEqual(template.thumbnail_instruction, "既定のサムネイル方針")
+        self.assertEqual(template.thumbnail_instruction_for("bfl"), "BFL専用のサムネイル方針")
+        self.assertEqual(template.thumbnail_instruction_for("openai"), "既定のサムネイル方針")
+
     def test_resolves_voicevox_settings_from_global_default_and_selected_template(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

@@ -228,7 +228,7 @@ def run() -> None:
                 size_setting="thumbnail_size",
             )
             thumbnail_file = GenerateThumbnailUseCase(
-                image_generator, template.thumbnail_instruction
+                image_generator, template.thumbnail_instruction_for(plugin_manager.image_provider_name("thumbnail"))
             ).execute(args.generate_thumbnail)
             release_image_generator = getattr(image_generator, "release", None)
             if callable(release_image_generator):
@@ -327,7 +327,8 @@ def run() -> None:
             )
             expected_scene_size = _parse_image_size(str(image_values.get("scene_size", "")))
             quality_report = quality_checker.check_project(
-                args.generate_video, ImagePromptBuilder(template.image_style),
+                args.generate_video,
+                ImagePromptBuilder(template.image_style_for(plugin_manager.image_provider_name("scene"))),
                 expected_scene_size=expected_scene_size,
             )
             if quality_report.has_errors and settings.openai_api_key is not None:
@@ -678,7 +679,10 @@ def run() -> None:
                 scene_visual_describer = CachingSceneVisualDescriber(
                     scene_visual_describer, cache_manager, description_fingerprint,
                 )
-            image_style = template.image_style or str(image_settings["style"])
+            image_style = (
+                template.image_style_for(plugin_manager.image_provider_name("scene"))
+                or str(image_settings["style"])
+            )
             use_case = GenerateSceneImagesUseCase(
                 ImagePromptBuilder(image_style),
                 image_generator,

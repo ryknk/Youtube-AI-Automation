@@ -135,4 +135,20 @@ class TemplateManager:
             title_instruction=(template_dir / "title_prompt.txt").read_text(encoding="utf-8").strip(),
             thumbnail_instruction=(template_dir / "thumbnail_prompt.txt").read_text(encoding="utf-8").strip(),
             video_settings=video_config,
+            image_style_overrides=TemplateManager._load_provider_overrides(template_dir, "image_prompt"),
+            thumbnail_instruction_overrides=TemplateManager._load_provider_overrides(template_dir, "thumbnail_prompt"),
         )
+
+    @staticmethod
+    def _load_provider_overrides(template_dir: Path, base_name: str) -> dict[str, str]:
+        """``<base_name>.<provider>.txt`` 形式のプロバイダー専用ファイルを読み込む。
+
+        例: image_prompt.qwen_image_nunchaku_local.txt
+        provider名はplugin_manager.image_provider_name()が返す値（config.yamlの
+        providers.image.scene/thumbnailに設定する値）と一致させる。
+        """
+        overrides: dict[str, str] = {}
+        for path in sorted(template_dir.glob(f"{base_name}.*.txt")):
+            provider_name = path.stem.removeprefix(f"{base_name}.")
+            overrides[provider_name] = path.read_text(encoding="utf-8").strip()
+        return overrides
