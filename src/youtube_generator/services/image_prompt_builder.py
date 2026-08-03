@@ -4,21 +4,28 @@ import re
 
 # セリフを示す引用記号。FLUXは引用符付き文言を画面内テキストとして描画する
 # 指示と解釈するため（BFL公式プロンプトガイド準拠）、渡す前に除去する。
+# FLUX以外のプロバイダーにはこの制約はなく、除去するとセリフのニュアンスが
+# 失われるだけなので、FLUX系プロバイダー使用時のみ適用する。
 _QUOTE_MARKERS = re.compile("[「」『』“”‘’\"']")
+# plugin_manager.image_provider_name()が返す値のうち、FLUXモデルを使用するプロバイダー。
+_FLUX_PROVIDER_NAMES = frozenset({"bfl", "flux_schnell_local"})
 
 
 class ImagePromptBuilder:
     """テンプレートで指定された画像表現をすべてのシーンに適用する。"""
 
-    def __init__(self, style: str) -> None:
+    def __init__(self, style: str, provider_name: str = "") -> None:
         self._style = style
+        self._strip_quote_markers = provider_name in _FLUX_PROVIDER_NAMES
 
     def build(self, scene_text: str) -> str:
         """シーンの内容と共通スタイルを結合した画像プロンプトを返す。"""
         cleaned_text = scene_text.strip()
         if not cleaned_text:
             raise ValueError("画像化するシーン本文が空です。")
-        narration_text = _QUOTE_MARKERS.sub("", cleaned_text)
+        narration_text = (
+            _QUOTE_MARKERS.sub("", cleaned_text) if self._strip_quote_markers else cleaned_text
+        )
         return (
             "Use case: a single wide illustration used as narrated video background art.\n"
             "Format: widescreen landscape illustration, image content filling the entire frame "

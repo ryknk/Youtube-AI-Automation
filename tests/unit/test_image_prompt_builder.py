@@ -28,8 +28,32 @@ class ImagePromptBuilderTests(unittest.TestCase):
 
         self.assertIn(style_with_mitigation, prompt)
 
-    def test_build_strips_quote_markers_from_narration(self) -> None:
+    def test_build_keeps_quote_markers_by_default(self) -> None:
+        """FLUX以外（provider_name未指定）では引用符をそのまま残す。"""
         builder = ImagePromptBuilder("style")
+
+        prompt = builder.build("「静かな部屋」")
+
+        self.assertIn("「静かな部屋」", prompt)
+
+    def test_build_keeps_quote_markers_for_non_flux_provider(self) -> None:
+        builder = ImagePromptBuilder("style", "qwen_image_nunchaku_local")
+
+        prompt = builder.build("「静かな部屋」")
+
+        self.assertIn("「静かな部屋」", prompt)
+
+    def test_build_strips_quote_markers_for_bfl_provider(self) -> None:
+        builder = ImagePromptBuilder("style", "bfl")
+
+        prompt = builder.build("「静かな部屋」")
+
+        self.assertNotIn("「", prompt)
+        self.assertNotIn("」", prompt)
+        self.assertIn("静かな部屋", prompt)
+
+    def test_build_strips_quote_markers_for_flux_schnell_local_provider(self) -> None:
+        builder = ImagePromptBuilder("style", "flux_schnell_local")
 
         prompt = builder.build("「静かな部屋」")
 

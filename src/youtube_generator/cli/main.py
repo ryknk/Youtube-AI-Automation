@@ -326,9 +326,10 @@ def run() -> None:
                 load_quality_rules(quality_values), duration_provider
             )
             expected_scene_size = _parse_image_size(str(image_values.get("scene_size", "")))
+            scene_provider_name = plugin_manager.image_provider_name("scene")
             quality_report = quality_checker.check_project(
                 args.generate_video,
-                ImagePromptBuilder(template.image_style_for(plugin_manager.image_provider_name("scene"))),
+                ImagePromptBuilder(template.image_style_for(scene_provider_name), scene_provider_name),
                 expected_scene_size=expected_scene_size,
             )
             if quality_report.has_errors and settings.openai_api_key is not None:
@@ -679,12 +680,10 @@ def run() -> None:
                 scene_visual_describer = CachingSceneVisualDescriber(
                     scene_visual_describer, cache_manager, description_fingerprint,
                 )
-            image_style = (
-                template.image_style_for(plugin_manager.image_provider_name("scene"))
-                or str(image_settings["style"])
-            )
+            scene_provider_name = plugin_manager.image_provider_name("scene")
+            image_style = template.image_style_for(scene_provider_name) or str(image_settings["style"])
             use_case = GenerateSceneImagesUseCase(
-                ImagePromptBuilder(image_style),
+                ImagePromptBuilder(image_style, scene_provider_name),
                 image_generator,
                 min_display_seconds=float(image_settings.get("min_display_seconds", 5.0)),
                 max_display_seconds=float(image_settings.get("max_display_seconds", 10.0)),
@@ -701,9 +700,9 @@ def run() -> None:
                 if key not in {"thumbnail_model", "thumbnail_size", "scene_edit"}
             }
             image_fingerprint = CacheManager.make_key(
-                plugin_manager.image_provider_name("scene"),
+                scene_provider_name,
                 json.dumps(scene_image_settings, ensure_ascii=False, sort_keys=True),
-                "image-prompt-v3", image_style,
+                "image-prompt-v4", image_style,
                 str(quality_values["characters_per_second"]),
                 "scene-description", str(scene_description_enabled), scene_description_model,
             )
