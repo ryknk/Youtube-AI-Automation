@@ -363,6 +363,46 @@
 
 ---
 
+## シーン画像スタイルテンプレート・場面説明生成プロンプトを、カンマ区切りの単語列挙から主語・動詞を備えた自然文へ統一
+
+**課題**: 各テンプレートの`image_prompt.txt`（画風・表現方針）は`photorealistic, high-production-value documentary style, realistic lighting, ...`のようなカンマ区切りの単語・タグ列挙形式だった。`OpenAISceneVisualDescriber`が生成する場面説明も同様の指示になっていなかったため、出力形式が不揃いになりやすかった。
+
+**決定**: 全テンプレートの`image_prompt.txt`を「Render the scene as a photorealistic, ... photograph with realistic lighting ...」のような、主語と動詞を備えた文章形式へ書き換えた。`OpenAISceneVisualDescriber`の指示文にも「カンマ区切りの単語・タグの羅列ではなく、主語と動詞を備えた具体的で明確な文章にしてください」を追加した。
+
+**理由**: 画像生成モデルへ渡すプロンプトとして、タグの羅列より自然文のほうが意図が明確に伝わりやすいと判断したため（ユーザー指示）。
+
+**参照**: `templates/*/image_prompt.txt`、[openai_scene_visual_describer.py](src/youtube_generator/infrastructure/openai_scene_visual_describer.py)。
+
+---
+
+## テンプレートの画像・サムネイルプロンプトに、プロバイダー別の上書きファイルを追加できるようにした
+
+**課題**: `image_prompt.txt`/`thumbnail_prompt.txt`はテンプレートごとに1つしか持てず、画像プロバイダーを切り替えても同じ画風指示が使われていた。プロバイダーによって得意な表現・トークンの解釈が異なるため、プロバイダーごとに文言を調整したい場合があった。
+
+**決定**: `VideoTemplate`に`image_style_overrides`/`thumbnail_instruction_overrides`（`dict[str, str]`）を追加し、`TemplateManager`がテンプレートフォルダ内の`image_prompt.<provider>.txt`/`thumbnail_prompt.<provider>.txt`（`provider`は`plugin_manager.image_provider_name()`が返す値、例: `qwen_image_nunchaku_local`）を検出して読み込むようにした。`template.image_style_for(provider_name)`/`thumbnail_instruction_for(provider_name)`は該当プロバイダー専用ファイルがあればそれを、無ければ既定の`image_style`/`thumbnail_instruction`を返す。既存のテンプレートで専用ファイルを追加していない場合は従来どおり既定ファイルのみが使われ、後方互換性を維持する。
+
+**理由**: テンプレートごとの差分は`templates/<template>`のみで表現し、コード側でプロバイダー分岐を書かない（CLAUDE.md）という既存方針に沿って、プロバイダー分岐もテンプレート側のファイル追加のみで完結できるようにしたため。
+
+**参照**: [template.py](src/youtube_generator/domain/template.py)、[template_service.py](src/youtube_generator/services/template_service.py)、`templates/psychology/image_prompt.qwen_image_nunchaku_local.txt`（現状唯一の上書き例、内容は既定と同一）。
+
+---
+
+## 場面説明生成に前後の場面の文脈を考慮させつつ、シーン画像プロンプトの引用符除去はFLUX系プロバイダーのみへ限定した
+
+**課題1**: `OpenAISceneVisualDescriber`は各シーンのナレーション文を独立に扱っていたため、動画全体を通して見たときに場面同士のつながり（登場人物・場所・時間帯・雰囲気の流れ）が不自然になる場合があった。
+
+**決定1**: 指示文に「前後の場面の文脈を踏まえ、動画全体として自然につながる描写にする」旨を追加した。ただし各説明はあくまでその場面固有の状況を1〜2文で説明するものとし、前後の場面の内容を書き込んだり複数場面を1つにまとめたりしないよう明記した。
+
+**課題2**: シーン画像プロンプトからの引用符除去（本ドキュメント内「シーン画像プロンプトから引用符付きセリフを除去し、否定列挙による対策は撤回した」の項で決定）は、当時唯一使用していたFLUX系プロバイダー（BFL/flux_schnell_local）にのみ必要な対策だったが、`ImagePromptBuilder`は全プロバイダー共通で無条件に除去を行っていた。Qwen-Image系にはこの制約がなく、除去すると台詞のニュアンスが失われるだけだった。
+
+**決定2**: `ImagePromptBuilder.__init__`に`provider_name`引数を追加し、`bfl`/`flux_schnell_local`使用時のみ引用符を除去するようにした（`_FLUX_PROVIDER_NAMES`）。呼び出し側（`cli/main.py`）は`plugin_manager.image_provider_name("scene")`で解決したプロバイダー名を渡す。動作が変わるため画像キャッシュfingerprintを`image-prompt-v3`→`image-prompt-v4`へ更新した。
+
+**理由**: 引用符除去はFLUX固有の制約への対策であり、他プロバイダーへ一律適用する根拠がないため、プロバイダーごとの実際の挙動に合わせた。
+
+**参照**: [image_prompt_builder.py](src/youtube_generator/services/image_prompt_builder.py)、[openai_scene_visual_describer.py](src/youtube_generator/infrastructure/openai_scene_visual_describer.py)、[cli/main.py](src/youtube_generator/cli/main.py)。
+
+---
+
 ## 関連ドキュメント
 
 - [CLAUDE.md](CLAUDE.md) — 開発方針・アーキテクチャ・コーディング規約

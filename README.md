@@ -80,6 +80,8 @@ PowerShell 7など、問題が発生しない環境では`python main.py`また�
 
 新しいテンプレートを追加する場合は、既存フォルダを複製して上記ファイルを編集します。`video.yaml`には少なくとも表示名とシーン構成を指定してください。
 
+`image_prompt.txt`・`thumbnail_prompt.txt`は、`image_prompt.<プロバイダー名>.txt`・`thumbnail_prompt.<プロバイダー名>.txt`という名前のファイルを同じフォルダへ追加すると、そのプロバイダー使用時のみ既定ファイルの代わりに読み込まれます（プロバイダー名は`config/config.yaml`の`providers.image.scene`/`thumbnail`に設定する値と同じもの、例: `qwen_image_nunchaku_local`、`bfl`）。該当プロバイダー専用の上書きファイルが無い場合は、既定の`image_prompt.txt`/`thumbnail_prompt.txt`がそのまま使われます。
+
 `title_prompt.txt`には、タイトルのトーン、煽りの強さ、キーワードの使い方、人物名や固有名詞を含めるか、答えをタイトルで明かすか、推奨構成などを記述できます。この方針はタイトルにのみ適用され、概要欄、タグ、ハッシュタグには適用されません。`title_prompt.txt`を変更するとタイトル用キャッシュだけが無効になり、次回のメタデータ生成時から新しい方針が反映されます。台本、音声、画像、動画とタイトル以外のメタデータは既存キャッシュを再利用します。
 
 ```yaml
@@ -413,6 +415,8 @@ image:
 不要な場合は各`prompt_suffix`を空文字列（`""`）にすれば無効化できます。
 
 FLUX.1 Schnellはguidance_scale=0.0の蒸留モデルのため`negative_prompt`が効かず、BFL APIも`negative_prompt`相当のパラメータを持たないため、いずれもポジティブプロンプトへの追記という同じ方式で実装しています。
+
+シーン画像プロンプトの組み立て時、台本中の引用記号（`「」『』""`等）は`bfl`/`flux_schnell_local`使用時のみ自動的に除去されます（FLUXは引用符付き文言を画面内テキストとして描画する指示と解釈するため）。Qwen-Image系等それ以外のプロバイダーではこの制約がないため、引用記号はそのまま保持されます（[image_prompt_builder.py](src/youtube_generator/services/image_prompt_builder.py)）。
 
 ## レターボックス帯（黒帯）の自動検出・再生成（qwen_image_local / qwen_image_nunchaku_local）
 
