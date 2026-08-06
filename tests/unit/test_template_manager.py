@@ -133,6 +133,51 @@ class TemplateManagerTests(unittest.TestCase):
             "background_color": "#000000", "background_opacity": 0.7,
         })
 
+    def test_resolves_image_edit_settings_from_global_default_and_selected_template(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            self._write_template(root, "default", "")
+            self._write_template(root, "psychology", """image:
+  qwen_image_edit_nunchaku_local:
+    reference_image: character_reference.png
+    prompt: "combined prompt"
+""")
+            manager = TemplateManager(root)
+
+            settings = manager.image_edit_settings({
+                "qwen_image_edit_nunchaku_local": {
+                    "prompt": "remove caption bar", "true_cfg_scale": 4.0,
+                },
+            }, "psychology")
+
+        self.assertEqual(settings["prompt"], "combined prompt")
+        self.assertEqual(settings["true_cfg_scale"], 4.0)
+        self.assertEqual(
+            settings["reference_image"],
+            str(root / "psychology" / "character_reference.png"),
+        )
+
+    def test_image_edit_settings_without_template_override_keeps_global_values(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            self._write_template(root, "history", "")
+            manager = TemplateManager(root)
+
+            settings = manager.image_edit_settings({
+                "qwen_image_edit_nunchaku_local": {"prompt": "remove caption bar"},
+            }, "history")
+
+        self.assertEqual(settings, {"prompt": "remove caption bar"})
+        self.assertNotIn("reference_image", settings)
+
+    def test_rejects_invalid_template_image_edit_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            self._write_template(root, "psychology", "image:\n  qwen_image_edit_nunchaku_local: invalid\n")
+
+            with self.assertRaisesRegex(ValueError, "qwen_image_edit_nunchaku_local"):
+                TemplateManager(root).image_edit_settings({}, "psychology")
+
     def test_rejects_invalid_template_subtitle_settings(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

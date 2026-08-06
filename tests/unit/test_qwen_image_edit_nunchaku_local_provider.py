@@ -215,6 +215,18 @@ class QwenImageEditNunchakuLocalSettingsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             QwenImageEditNunchakuLocalSettings.from_mapping({"lightning_steps": 5})
 
+    def test_from_mapping_reference_image_defaults_to_none(self) -> None:
+        settings = QwenImageEditNunchakuLocalSettings.from_mapping({})
+
+        self.assertIsNone(settings.reference_image)
+
+    def test_from_mapping_reads_reference_image(self) -> None:
+        settings = QwenImageEditNunchakuLocalSettings.from_mapping({
+            "reference_image": "D:/templates/psychology/character_reference.png",
+        })
+
+        self.assertEqual(settings.reference_image, "D:/templates/psychology/character_reference.png")
+
 
 class QwenImageEditNunchakuLocalImageEditorTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -292,6 +304,46 @@ class QwenImageEditNunchakuLocalImageEditorTests(unittest.TestCase):
         # 保存されるファイルは編集前と同じ800x600へ戻される。
         with Image.open(self.image_file) as saved_image:
             self.assertEqual(saved_image.size, (800, 600))
+
+    def test_edit_includes_reference_image_when_configured(self) -> None:
+        reference_file = Path(self._temp_dir.name) / "character_reference.png"
+        Image.new("RGB", (300, 300), color="green").save(reference_file)
+        settings = QwenImageEditNunchakuLocalSettings.from_mapping({
+            "seed": 123, "reference_image": str(reference_file),
+        })
+        result_image = Image.new("RGB", (800, 600), color="blue")
+        pipeline = FakePipeline(result_image)
+        transformer_cls = FakeNunchakuTransformerClass(FakeTransformer())
+        torch_module = FakeTorch(cuda_available=True)
+        diffusers_module = FakeDiffusers(pipeline)
+        nunchaku_utils = FakeNunchakuUtils(gpu_memory_gb=24.0)
+        editor = QwenImageEditNunchakuLocalImageEditor(settings)
+
+        patches = _patch_imports(torch_module, diffusers_module, transformer_cls, nunchaku_utils)
+        with patches[0], patches[1], patches[2]:
+            editor.edit(self.image_file)
+
+        call = pipeline.calls[0]
+        self.assertEqual(len(call["image"]), 2)
+        self.assertEqual(call["image"][0].size, (300, 300))
+
+    def test_edit_raises_descriptive_error_when_reference_image_missing(self) -> None:
+        settings = QwenImageEditNunchakuLocalSettings.from_mapping({
+            "seed": 123, "reference_image": str(Path(self._temp_dir.name) / "does_not_exist.png"),
+        })
+        pipeline = FakePipeline(Image.new("RGB", (800, 600)))
+        transformer_cls = FakeNunchakuTransformerClass(FakeTransformer())
+        torch_module = FakeTorch(cuda_available=True)
+        diffusers_module = FakeDiffusers(pipeline)
+        nunchaku_utils = FakeNunchakuUtils(gpu_memory_gb=24.0)
+        editor = QwenImageEditNunchakuLocalImageEditor(settings)
+
+        patches = _patch_imports(torch_module, diffusers_module, transformer_cls, nunchaku_utils)
+        with patches[0], patches[1], patches[2]:
+            with self.assertRaisesRegex(ImageEditError, "reference_image"):
+                editor.edit(self.image_file)
+
+        self.assertEqual(pipeline.calls, [])
 
     def test_non_lightning_variant_uses_plain_filename(self) -> None:
         settings = QwenImageEditNunchakuLocalSettings.from_mapping({"lightning_steps": None})

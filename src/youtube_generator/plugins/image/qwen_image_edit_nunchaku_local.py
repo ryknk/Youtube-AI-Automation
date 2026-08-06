@@ -81,6 +81,12 @@ class QwenImageEditNunchakuLocalSettings:
     low_vram_num_blocks_on_gpu: int = 1
     seed: int | None = None
     model_cache_dir: str | None = None
+    # 参照画像への任意のパス。設定すると、編集対象画像に加えこの画像もQwenImageEditPlusPipeline
+    # （2509の複数画像入力に対応したパイプライン）へ渡し、promptで参照画像の要素（例:
+    # 統一デザインのキャラクター）を編集対象画像へ反映させられる。未設定（既定）の場合は
+    # 従来どおり編集対象画像1枚のみで編集する。テンプレート単位の上書きはTemplateManagerが
+    # 相対パスをテンプレートディレクトリ基準の絶対パスへ解決してから渡す。
+    reference_image: str | None = None
 
     @classmethod
     def from_mapping(cls, values: dict[str, Any]) -> "QwenImageEditNunchakuLocalSettings":
@@ -104,6 +110,7 @@ class QwenImageEditNunchakuLocalSettings:
             )
             seed_value = values.get("seed")
             model_cache_dir = values.get("model_cache_dir")
+            reference_image = values.get("reference_image")
             width_value = values.get("width")
             height_value = values.get("height")
             if (width_value is None) != (height_value is None):
@@ -125,6 +132,7 @@ class QwenImageEditNunchakuLocalSettings:
                 low_vram_num_blocks_on_gpu=int(values.get("low_vram_num_blocks_on_gpu", 1)),
                 seed=int(seed_value) if seed_value is not None else None,
                 model_cache_dir=str(model_cache_dir) if model_cache_dir else None,
+                reference_image=str(reference_image) if reference_image else None,
             )
         except (TypeError, ValueError) as error:
             raise ValueError(
@@ -157,6 +165,7 @@ class QwenImageEditNunchakuLocalImageEditor(ImageEditor):
 
         source_image = Image.open(image_file).convert("RGB")
         target_size = source_image.size
+        edit_images = [self._load_reference_image(), source_image] if self._settings.reference_image else [source_image]
         # widthとheightが設定されていれば、編集対象画像自身の解像度ではなくこちらで推論する
         # （生成側の出力解像度より小さくすることで推論画素数を減らし処理時間を短縮できる）。
         # 編集後は_fit_to_sizeでtarget_size（編集前と同じ解像度）へ戻すため、最終的な
@@ -176,7 +185,7 @@ class QwenImageEditNunchakuLocalImageEditor(ImageEditor):
             inference_size[0], inference_size[1], seed,
         )
         edit_kwargs: dict[str, Any] = {
-            "image": [source_image],
+            "image": edit_images,
             "prompt": self._settings.prompt,
             "negative_prompt": self._settings.negative_prompt,
             "true_cfg_scale": self._settings.true_cfg_scale,
@@ -199,6 +208,15 @@ class QwenImageEditNunchakuLocalImageEditor(ImageEditor):
             "Qwen-Image-Edit(nunchaku)による画像編集が完了しました: file=%s, edit_seconds=%.2f",
             image_file, edit_seconds,
         )
+
+    def _load_reference_image(self) -> "Image.Image":
+        reference_path = Path(self._settings.reference_image)
+        if not reference_path.is_file():
+            raise ImageEditError(
+                "image.qwen_image_edit_nunchaku_local.reference_image で指定された参照画像が"
+                f"見つかりません: {reference_path}"
+            )
+        return Image.open(reference_path).convert("RGB")
 
     def release(self) -> None:
         """ジョブ終了時にロード済みモデルを明示的に解放する。"""

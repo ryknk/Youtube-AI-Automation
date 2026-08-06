@@ -134,6 +134,34 @@ subtitles:
 
 設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。`box_enabled`を`true`にすると字幕の周囲に背景ボックスを表示します。`background_color`は`#RRGGBB`またはASS形式、`background_opacity`は`0.0`（透明）～`1.0`（不透明）で指定します。背景色と透明度は、本編とエンディングの両方に反映されます。テンプレート別字幕設定は本編の字幕分割・動画描画とエンディングの字幕スタイルに反映されます。字幕（SRT）はキャッシュされ、字幕設定を変更すると字幕キャッシュのみが無効になります。動画（MP4）はキャッシュ対象外のため、字幕キャッシュの有無にかかわらず`--generate-video`実行のたびに再生成されます。エンディング字幕の表示・非表示は、従来どおり`ending.subtitles.enabled`で個別に設定します。
 
+### テンプレート別画像編集設定（Qwen-Image-Edit参照画像）
+
+`image.scene_edit.provider`が`qwen_image_edit_nunchaku_local`の場合、各テンプレートの`video.yaml`で編集設定を上書きできます。変更する項目だけを記述できます。
+
+```yaml
+image:
+  qwen_image_edit_nunchaku_local:
+    prompt: "編集内容を指示するプロンプト"
+    reference_image: character_reference.png
+```
+
+`reference_image`は任意の参照画像パスです。設定すると、編集対象画像に加えこの参照画像もQwen-Image-Edit-2509（複数画像入力に対応したパイプライン）へ渡し、`prompt`で参照画像の要素（例: 統一デザインのキャラクター）を編集対象画像へ反映させられます。相対パスは、その設定を記述したテンプレートのディレクトリ（例: `templates/psychology/`）を基準に解決されます。既定（未指定時）は`null`で、編集対象画像1枚のみを使う従来動作です。設定は`config/config.yaml`の共通値、`default`テンプレート、選択テンプレートの順に上書きされます。
+
+### video.yamlで上書きできる設定の一覧
+
+各テンプレートの`video.yaml`で上書き可能な設定は次の4系統です。いずれも「変更する項目だけを記述する」形式（差分マージ）で、記述しなかった項目は`config/config.yaml`の値（または`default`テンプレートの値）をそのまま引き継ぎます。
+
+| 系統 | 主な項目 | 参照 |
+| --- | --- | --- |
+| `audio.voicevox` | `base_url`, `speaker_id`, `timeout`, `speed_scale`, `pitch_scale`, `intonation_scale`, `volume_scale`, `pre_phoneme_length`, `post_phoneme_length` | 「テンプレート別VOICEVOX設定」 |
+| `subtitles` | `font`, `size`, `color`, `segmentation_mode`, `max_lines`, `max_chars_per_line`, `min_chars_per_segment`, `timing_mode`, `fallback_timing_mode`（現状未使用）, `position`, `alignment`, `bottom_margin`, `box_enabled`, `background_color`, `background_opacity`, `alignment_provider`（`provider`/`language`/`model`をブロック単位で上書き） | 「テンプレート別字幕設定」「stable-tsによる字幕タイミングのアライメント」 |
+| `ending.subtitles` | `enabled` | 「テンプレート別エンディング字幕」 |
+| `image.qwen_image_edit_nunchaku_local` | `base_model_id`, `transformer_repo_id`, `precision`, `rank`, `lightning_steps`, `num_inference_steps`, `true_cfg_scale`, `width`, `height`, `prompt`, `negative_prompt`, `reference_image`, `offload_threshold_gb`, `low_vram_use_pin_memory`, `low_vram_num_blocks_on_gpu`, `seed`, `model_cache_dir` | 「テンプレート別画像編集設定（Qwen-Image-Edit参照画像）」 |
+
+**`null`の扱いについての注意**: 上記のほとんどの項目は、`video.yaml`に`項目名: null`と明記すると「未指定として既定値を引き継ぐ」のではなく、その項目の値が実際に`null`（Python上の`None`）で上書きされます。多くの項目は数値・文字列として無条件に変換されるため、`null`を書くとエラーになる（例: `size`, `bottom_margin`, `rank`など）か、意図せず挙動が変わる（例: `ending.subtitles.enabled: null`はエンディング字幕を強制的に無効化してしまう）ため、**基本的に`null`は指定しないでください**。上書きしたくない項目は、キーごと省略してください。
+
+例外的に、`image.qwen_image_edit_nunchaku_local`の`lightning_steps`, `num_inference_steps`, `width`, `height`, `seed`, `model_cache_dir`, `reference_image`の7項目のみ、コード側で`None`を「未指定・自動」として正しく扱う設計になっているため、明示的に`null`と書いても安全です。
+
 ### stable-tsによる字幕タイミングのアライメント
 
 `subtitles.timing_mode`が`alignment`の場合、音声生成（`--generate-audio`）の直後に、生成済みの音声（`sceneNN.mp3`）と元台本（`sceneNN.txt`）を[stable-ts](https://github.com/jianfch/stable-ts)で強制アライメント（Whisperによる文字起こしは行わず、既知の台本テキストを音声へ整合させる処理）し、`sceneNN.alignment.json`を生成します。字幕分割（`SubtitleSplitter`）で作成した各字幕セグメントは、このJSONの単語単位タイムスタンプを使って文字数比率方式より高精度な開始・終了時刻へ補正されます。

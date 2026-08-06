@@ -89,6 +89,41 @@ class TemplateManager:
             )
         return subtitles
 
+    def image_edit_settings(
+        self, global_image_settings: dict[str, Any], template_id: str | None = None,
+    ) -> dict[str, Any]:
+        """qwen_image_edit_nunchaku_local設定を共通、default、選択テンプレートの順に解決する。
+
+        reference_imageが相対パスの場合、それを定義したテンプレート（default/選択テンプレート
+        それぞれ）のディレクトリを基準に絶対パスへ解決する。"""
+        global_editor_settings = global_image_settings.get("qwen_image_edit_nunchaku_local", {})
+        if not isinstance(global_editor_settings, dict):
+            raise ValueError("config.yaml の image.qwen_image_edit_nunchaku_local 設定が不正です。")
+        resolved = dict(global_editor_settings)
+        selected = self.get(template_id)
+
+        if selected.template_id != "default" and (self._templates_dir / "default").is_dir():
+            resolved.update(self._template_image_edit_settings(self.get("default")))
+        resolved.update(self._template_image_edit_settings(selected))
+        return resolved
+
+    def _template_image_edit_settings(self, template: VideoTemplate) -> dict[str, Any]:
+        image_settings = (template.video_settings or {}).get("image", {})
+        if not isinstance(image_settings, dict):
+            raise ValueError(f"テンプレート {template.template_id} の image 設定が不正です。")
+        editor_settings = image_settings.get("qwen_image_edit_nunchaku_local", {})
+        if not isinstance(editor_settings, dict):
+            raise ValueError(
+                f"テンプレート {template.template_id} の image.qwen_image_edit_nunchaku_local 設定が不正です。"
+            )
+        resolved = dict(editor_settings)
+        reference_image = resolved.get("reference_image")
+        if reference_image:
+            resolved["reference_image"] = str(
+                self._templates_dir / template.template_id / str(reference_image)
+            )
+        return resolved
+
     def ending_subtitles_enabled(self, template_id: str | None = None, default: bool = True) -> bool:
         """テンプレートのエンディング字幕表示設定。未指定時はdefault、最終的にtrue。"""
         template = self.get(template_id)

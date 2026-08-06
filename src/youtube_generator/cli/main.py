@@ -753,6 +753,19 @@ def run() -> None:
             if not isinstance(retry_settings, dict) or not isinstance(image_settings, dict):
                 raise ValueError("config.yaml の retry または image 設定が不正です。")
             retry_policy = RetryPolicy.from_settings(retry_settings)
+            scene_edit_settings = image_settings.get("scene_edit", {})
+            if not isinstance(scene_edit_settings, dict):
+                raise ValueError("config.yaml の image.scene_edit 設定が不正です。")
+            edit_provider_name = str(scene_edit_settings.get("provider", "qwen_image_edit_nunchaku_local")).lower()
+            if edit_provider_name == "qwen_image_edit_nunchaku_local":
+                # テンプレート単位でreference_image・prompt等を上書きできるようにする
+                # （templates/<template>/video.yamlのimage.qwen_image_edit_nunchaku_local）。
+                image_settings = {
+                    **image_settings,
+                    "qwen_image_edit_nunchaku_local": templates.image_edit_settings(
+                        image_settings, args.template,
+                    ),
+                }
             image_editor = plugin_manager.create_image_editor(image_settings, retry_policy)
             if image_editor is None:
                 logger.info("image.scene_edit.enabled が false のため画像編集をスキップします。")
@@ -765,10 +778,6 @@ def run() -> None:
             if not image_files:
                 raise FileNotFoundError(f"scene*.png が見つかりません: {args.edit_images}")
 
-            scene_edit_settings = image_settings.get("scene_edit", {})
-            if not isinstance(scene_edit_settings, dict):
-                raise ValueError("config.yaml の image.scene_edit 設定が不正です。")
-            edit_provider_name = str(scene_edit_settings.get("provider", "qwen_image_edit_nunchaku_local")).lower()
             edit_provider_settings = image_settings.get(edit_provider_name, {})
             edit_fingerprint = CacheManager.make_key(
                 edit_provider_name,

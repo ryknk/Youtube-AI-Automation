@@ -64,7 +64,7 @@ image:
   # 処理時間が大きく増加する（実測: RTX 4070/12GBでnum_inference_steps=8のとき約107秒/枚。
   # 別途モデルダウンロード・ロードで初回のみ約13分、ディスク使用量+約27GBが必要）。
   scene_edit:
-    enabled: true
+    enabled: false
     # 現状qwen_image_edit_nunchaku_localのみ対応。
     provider: qwen_image_edit_nunchaku_local
   # scene_edit.provider が qwen_image_edit_nunchaku_local の場合のみ使用される。
@@ -106,6 +106,14 @@ image:
       Do not change anything else in the image.
     # Qwen-Image-Edit系は空文字列だとエラーになるため半角スペースを既定値とする。
     negative_prompt: " "
+    # 任意の参照画像パス。設定すると、編集対象画像に加えこの画像もQwenImageEditPlusPipeline
+    # （2509の複数画像入力に対応したパイプライン）へ渡し、promptで参照画像の要素（例:
+    # 統一デザインのキャラクター）を編集対象画像へ反映させられる。既定はnull（未使用、
+    # 編集対象画像1枚のみで編集する従来動作）。テンプレート単位で使う場合は
+    # templates/<template>/video.yamlのimage.qwen_image_edit_nunchaku_local.reference_image
+    # で上書きする（相対パスはそのテンプレートのディレクトリ基準で解決される。例:
+    # templates/psychology/video.yaml）。
+    reference_image: null
     # 公式サンプルのしきい値（GB）。GPU VRAMがこれを超える場合はenable_model_cpu_offload、
     # 以下の場合はtransformer.set_offload+enable_sequential_cpu_offloadを使う。
     offload_threshold_gb: 18.0
