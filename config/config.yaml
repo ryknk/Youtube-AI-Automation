@@ -207,7 +207,7 @@ image:
     # 語も追加。ポジティブプロンプト側でも「動画のワンシーンではなくスタンドアロンのイラストで
     # ある」旨を明示しており、両輪で対策している（テンプレート差分のためtemplates/<template>/
     # image_prompt.txt側に記載。image_prompt_builder.pyは共通部品のため汎用的な内容のみ）。
-    negative_prompt: "watermark, logo, YouTube logo, brand logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
+    negative_prompt: "watermark, logo, YouTube logo, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
@@ -281,7 +281,7 @@ image:
     # 語も追加。ポジティブプロンプト側でも「動画のワンシーンではなくスタンドアロンのイラストで
     # ある」旨を明示しており、両輪で対策している（テンプレート差分のためtemplates/<template>/
     # image_prompt.txt側に記載。image_prompt_builder.pyは共通部品のため汎用的な内容のみ）。
-    negative_prompt: "watermark, logo, YouTube logo, brand logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
+    negative_prompt: "watermark, logo, YouTube logo, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない

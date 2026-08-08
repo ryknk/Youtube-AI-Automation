@@ -44,6 +44,10 @@ class ImagePromptBuilder:
             "features, hairstyles, and attire appropriate to the scene.\n"
             "Dialogue/thoughts: convey any spoken lines or inner thoughts purely through facial "
             "expression, gaze, posture, body language, and the surrounding situation.\n"
+            "Product design: any electronics, devices, or products shown (laptops, phones, "
+            "appliances, packaging, clothing, etc.) must be generic and unbranded, with no "
+            "real-world company logos, brand marks, or recognizable trademarks anywhere in the "
+            "image; invent plain, logo-free designs instead.\n"
             "Constraints: widescreen landscape image filling the entire frame edge to edge, "
             "maintain the specified style consistently across all scenes."
         )
