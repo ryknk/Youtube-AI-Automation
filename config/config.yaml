@@ -207,6 +207,9 @@ image:
     # 語も追加。ポジティブプロンプト側でも「動画のワンシーンではなくスタンドアロンのイラストで
     # ある」旨を明示しており、両輪で対策している（テンプレート差分のためtemplates/<template>/
     # image_prompt.txt側に記載。image_prompt_builder.pyは共通部品のため汎用的な内容のみ）。
+    # 屋内・屋外など複数の場所が1枚の画像内に混在する問題への対策も追加している
+    # （positive prompt側では具体的な名詞を例示すると逆にその構図へ誘導されやすいため、
+    # image_prompt_builder.pyのSetting指示は抽象的な表現のみとし、具体的な抑制はこちら側で行う）。
     negative_prompt: "watermark, logo, YouTube logo, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
@@ -281,6 +284,9 @@ image:
     # 語も追加。ポジティブプロンプト側でも「動画のワンシーンではなくスタンドアロンのイラストで
     # ある」旨を明示しており、両輪で対策している（テンプレート差分のためtemplates/<template>/
     # image_prompt.txt側に記載。image_prompt_builder.pyは共通部品のため汎用的な内容のみ）。
+    # 屋内・屋外など複数の場所が1枚の画像内に混在する問題への対策も追加している
+    # （positive prompt側では具体的な名詞を例示すると逆にその構図へ誘導されやすいため、
+    # image_prompt_builder.pyのSetting指示は抽象的な表現のみとし、具体的な抑制はこちら側で行う）。
     negative_prompt: "watermark, logo, YouTube logo, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
