@@ -29,6 +29,26 @@ def test_ending_images_are_fixed_without_zoom_movement_or_fade(tmp_path: Path) -
     assert "trim=duration=5.000" in filters
 
 
+def test_fade_in_seconds_applies_fade_at_start_of_ending(tmp_path: Path) -> None:
+    renderer = FfmpegEndingRenderer(
+        VideoRenderSettings(
+            width=1920, height=1080, fps=30, bgm_enabled=False,
+            bgm_file=tmp_path / "unused.mp3", bgm_volume=0.0,
+            fade_in_seconds=0.5,
+        )
+    )
+    request = EndingRenderRequest(
+        audio_file=tmp_path / "ending.mp3", subtitle_file=None,
+        image_files=(tmp_path / "ending.png",), output_file=tmp_path / "ending.mp4",
+        duration_seconds=5.0,
+    )
+
+    command = renderer.build_command(request)
+    filters = command[command.index("-filter_complex") + 1]
+
+    assert "[visual]fade=t=in:st=0:d=0.500[video]" in filters
+
+
 def test_multiple_ending_images_remain_fixed_and_are_concatenated(tmp_path: Path) -> None:
     renderer = FfmpegEndingRenderer(
         VideoRenderSettings(
@@ -73,6 +93,71 @@ def test_end_padding_extends_last_image_and_pads_silent_audio(tmp_path: Path) ->
     last_image_index = command.index(str(tmp_path / "second.png"))
     assert command[last_image_index - 2] == "4.000"
     assert "apad=pad_dur=1.000" in filters
+
+
+def test_start_padding_extends_first_image_and_delays_narration_audio(tmp_path: Path) -> None:
+    renderer = FfmpegEndingRenderer(
+        VideoRenderSettings(
+            width=1920, height=1080, fps=30, bgm_enabled=False,
+            bgm_file=tmp_path / "unused.mp3", bgm_volume=0.0,
+        )
+    )
+    request = EndingRenderRequest(
+        audio_file=tmp_path / "ending.mp3", subtitle_file=None,
+        image_files=(tmp_path / "first.png", tmp_path / "second.png"),
+        output_file=tmp_path / "ending.mp4", duration_seconds=6.0,
+        start_padding_seconds=0.5,
+    )
+
+    command = renderer.build_command(request)
+    filters = command[command.index("-filter_complex") + 1]
+
+    # 最初の画像だけstart_padding_seconds分延び、最後の画像は元の秒数のまま。
+    assert filters.count("trim=duration=3.500") == 1
+    assert filters.count("trim=duration=3.000") == 1
+    first_image_index = command.index(str(tmp_path / "first.png"))
+    assert command[first_image_index - 2] == "3.500"
+    assert "adelay=delays=500:all=1,apad=pad_dur=0.000" in filters
+
+
+def test_start_and_end_padding_both_extend_single_image(tmp_path: Path) -> None:
+    renderer = FfmpegEndingRenderer(
+        VideoRenderSettings(
+            width=1920, height=1080, fps=30, bgm_enabled=False,
+            bgm_file=tmp_path / "unused.mp3", bgm_volume=0.0,
+        )
+    )
+    request = EndingRenderRequest(
+        audio_file=tmp_path / "ending.mp3", subtitle_file=None,
+        image_files=(tmp_path / "ending.png",), output_file=tmp_path / "ending.mp4",
+        duration_seconds=5.0, start_padding_seconds=0.5, end_padding_seconds=1.0,
+    )
+
+    command = renderer.build_command(request)
+    filters = command[command.index("-filter_complex") + 1]
+
+    # 1枚のみの場合は最初=最後の画像なので、start+end両方が加算される。
+    assert "trim=duration=6.500" in filters
+    assert "adelay=delays=500:all=1,apad=pad_dur=1.000" in filters
+
+
+def test_start_padding_zero_omits_adelay_filter(tmp_path: Path) -> None:
+    renderer = FfmpegEndingRenderer(
+        VideoRenderSettings(
+            width=1920, height=1080, fps=30, bgm_enabled=False,
+            bgm_file=tmp_path / "unused.mp3", bgm_volume=0.0,
+        )
+    )
+    request = EndingRenderRequest(
+        audio_file=tmp_path / "ending.mp3", subtitle_file=None,
+        image_files=(tmp_path / "ending.png",), output_file=tmp_path / "ending.mp4",
+        duration_seconds=5.0,
+    )
+
+    command = renderer.build_command(request)
+    filters = command[command.index("-filter_complex") + 1]
+
+    assert "adelay" not in filters
 
 
 def test_end_padding_extends_bgm_trim_to_total_duration(tmp_path: Path) -> None:

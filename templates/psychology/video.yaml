@@ -29,7 +29,7 @@ bgm:
     file: assets/ending_trim.m4a
 audio:
   voicevox:
-    speaker_id: 2
+    speaker_id: 13
     speed_scale: 1.0
     pitch_scale: 0.0
     intonation_scale: 1.0

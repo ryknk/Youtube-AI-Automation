@@ -321,6 +321,10 @@ def run() -> None:
             )
             # エンディングを結合しない場合、最後のシーンを延長する意味がないため間隔は0秒とする。
             main_gap_seconds = float(ending_values.get("gap_seconds", 1.0)) if ending_auto_append_enabled else 0.0
+            # エンディングを結合しない場合、本編終了時のフェードアウトも不要なため0秒とする。
+            main_fade_out_seconds = (
+                float(ending_values.get("main_fade_out_seconds", 0.0)) if ending_auto_append_enabled else 0.0
+            )
             duration_provider = FfprobeAudioDurationProvider(settings.ffprobe_executable)
             quality_checker = QualityChecker(
                 load_quality_rules(quality_values), duration_provider
@@ -369,6 +373,7 @@ def run() -> None:
                     bgm_volume=bgm_setting.volume, bgm_loop=bgm_setting.loop,
                     bgm_fade_in=bgm_setting.fade_in, bgm_fade_out=bgm_setting.fade_out,
                     gap_seconds=main_gap_seconds,
+                    fade_out_seconds=main_fade_out_seconds,
                     subtitle_font=str(subtitle_values["font"]), subtitle_size=int(subtitle_values["size"]),
                     subtitle_color=str(subtitle_values["color"]),
                     subtitle_position=str(subtitle_values.get("position", "bottom")),
@@ -395,7 +400,7 @@ def run() -> None:
                 json.dumps({
                     "width": video_values["width"], "height": video_values["height"],
                     "fps": video_values["fps"], "output_format": video_values["output_format"],
-                    "gap_seconds": main_gap_seconds,
+                    "gap_seconds": main_gap_seconds, "fade_out_seconds": main_fade_out_seconds,
                 }, sort_keys=True),
                 json.dumps(subtitle_values, ensure_ascii=False, sort_keys=True),
                 bgm_setting.cache_fingerprint,

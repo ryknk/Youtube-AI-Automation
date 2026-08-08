@@ -17,6 +17,7 @@ class EndingRenderRequest:
     output_file: Path
     duration_seconds: float
     end_padding_seconds: float = 0.0
+    start_padding_seconds: float = 0.0
 
 
 class FfmpegEndingRenderer:
@@ -54,12 +55,16 @@ class FfmpegEndingRenderer:
         command = [self._executable, "-y"]
         image_count = max(1, len(request.image_files))
         segment_duration = request.duration_seconds / image_count
-        total_duration = request.duration_seconds + request.end_padding_seconds
+        total_duration = request.duration_seconds + request.start_padding_seconds + request.end_padding_seconds
         if request.image_files:
             last_index = len(request.image_files) - 1
             for index, image_file in enumerate(request.image_files):
-                # 最後の画像だけend_padding_seconds分延長し、ナレーション終了後の余白を作る。
-                extended = request.end_padding_seconds if index == last_index else 0.0
+                # 最初の画像はstart_padding_seconds分、最後の画像はend_padding_seconds分延長し、
+                # 本編からの余韻とナレーション終了後の余白を作る（1枚のみの場合は両方が加算される）。
+                extended = (
+                    (request.start_padding_seconds if index == 0 else 0.0)
+                    + (request.end_padding_seconds if index == last_index else 0.0)
+                )
                 command.extend([
                     "-loop", "1", "-framerate", str(self._settings.fps),
                     "-t", f"{segment_duration + extended:.3f}",
@@ -89,8 +94,12 @@ class FfmpegEndingRenderer:
         segment_duration = request.duration_seconds / image_count
         last_index = image_count - 1
         for index in range(image_count):
-            # 最後の画像だけend_padding_seconds分延長し、ナレーション終了後の余白を作る。
-            extended = request.end_padding_seconds if index == last_index else 0.0
+            # 最初の画像はstart_padding_seconds分、最後の画像はend_padding_seconds分延長し、
+            # 本編からの余韻とナレーション終了後の余白を作る（1枚のみの場合は両方が加算される）。
+            extended = (
+                (request.start_padding_seconds if index == 0 else 0.0)
+                + (request.end_padding_seconds if index == last_index else 0.0)
+            )
             parts.append(
                 f"[{index}:v]scale={self._settings.width}:{self._settings.height}:"
                 "force_original_aspect_ratio=decrease,"
@@ -105,29 +114,46 @@ class FfmpegEndingRenderer:
             concat_inputs = "".join(f"[v{index}]" for index in range(image_count))
             parts.append(f"{concat_inputs}concat=n={image_count}:v=1:a=0[visual]")
         if request.subtitle_file is None:
-            parts.append("[visual]null[video]")
-            return self._audio_filters(parts, audio_index, request.duration_seconds, request.end_padding_seconds)
-        subtitle_path = self._escape_path(request.subtitle_file)
-        style = build_ass_subtitle_style(
-            font=self._settings.subtitle_font,
-            size=self._settings.subtitle_size,
-            primary_color=self._settings.subtitle_color,
-            position=self._settings.subtitle_position,
-            alignment=self._settings.subtitle_alignment,
-            margin=self._settings.subtitle_bottom_margin,
-            box_enabled=self._settings.subtitle_box_enabled,
-            background_color=self._settings.subtitle_background_color,
-            background_opacity=self._settings.subtitle_background_opacity,
+            video_label = "visual"
+        else:
+            subtitle_path = self._escape_path(request.subtitle_file)
+            style = build_ass_subtitle_style(
+                font=self._settings.subtitle_font,
+                size=self._settings.subtitle_size,
+                primary_color=self._settings.subtitle_color,
+                position=self._settings.subtitle_position,
+                alignment=self._settings.subtitle_alignment,
+                margin=self._settings.subtitle_bottom_margin,
+                box_enabled=self._settings.subtitle_box_enabled,
+                background_color=self._settings.subtitle_background_color,
+                background_opacity=self._settings.subtitle_background_opacity,
+            )
+            parts.append(f"[visual]subtitles=filename='{subtitle_path}':charenc=UTF-8:force_style='{style}'[video_subtitled]")
+            video_label = "video_subtitled"
+        total_duration = request.duration_seconds + request.start_padding_seconds + request.end_padding_seconds
+        if self._settings.fade_in_seconds > 0:
+            # 本編からの結合を見据え、エンディング開始時に画面のみフェードインする
+            # （BGM/ナレーション音声はここでは変更しない）。
+            fade_in = min(self._settings.fade_in_seconds, total_duration)
+            parts.append(f"[{video_label}]fade=t=in:st=0:d={fade_in:.3f}[video]")
+        else:
+            parts.append(f"[{video_label}]null[video]")
+        return self._audio_filters(
+            parts, audio_index, request.duration_seconds, request.start_padding_seconds, request.end_padding_seconds,
         )
-        parts.append(f"[visual]subtitles=filename='{subtitle_path}':charenc=UTF-8:force_style='{style}'[video]")
-        return self._audio_filters(parts, audio_index, request.duration_seconds, request.end_padding_seconds)
 
     def _audio_filters(
-        self, parts: list[str], audio_index: int, duration_seconds: float, end_padding_seconds: float,
+        self, parts: list[str], audio_index: int, duration_seconds: float,
+        start_padding_seconds: float, end_padding_seconds: float,
     ) -> str:
-        total_duration = duration_seconds + end_padding_seconds
-        # ナレーション終了後、動画の余白（end_padding_seconds）に合わせて音声側も無音でpadする。
-        parts.append(f"[{audio_index}:a]apad=pad_dur={end_padding_seconds:.3f}[narration]")
+        total_duration = duration_seconds + start_padding_seconds + end_padding_seconds
+        # 本編からの余韻としてstart_padding_seconds分ナレーションを遅延させ、
+        # ナレーション終了後はend_padding_seconds分だけ無音でpadする。
+        narration_filters = []
+        if start_padding_seconds > 0:
+            narration_filters.append(f"adelay=delays={round(start_padding_seconds * 1000)}:all=1")
+        narration_filters.append(f"apad=pad_dur={end_padding_seconds:.3f}")
+        parts.append(f"[{audio_index}:a]{','.join(narration_filters)}[narration]")
         if self._settings.bgm_enabled and self._settings.bgm_file.is_file():
             fade_in = min(self._settings.bgm_fade_in, total_duration)
             fade_out = min(self._settings.bgm_fade_out, total_duration)

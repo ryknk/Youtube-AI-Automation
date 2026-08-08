@@ -427,8 +427,15 @@ ending:
   auto_append: true
   min_duration: 5
   max_duration: 20
+  # 本編映像の末尾に追加する無音の余白（秒）
   gap_seconds: 1.0
-  # エンディング映像自体の末尾に追加する無音の余白（秒）
+  # 本編終了時の画面フェードアウト秒数（音声は対象外。0で無効。エンディング未結合時は常に無効）
+  main_fade_out_seconds: 0.5
+  # エンディング映像の冒頭に追加する無音の余白（秒）
+  start_padding_seconds: 0.5
+  # エンディング開始時の画面フェードイン秒数（音声は対象外。0で無効）
+  fade_in_seconds: 0.5
+  # エンディング映像の末尾に追加する無音の余白（秒）
   end_padding_seconds: 1.0
   max_reference_text_chars: 10000
   image_mode: sequence

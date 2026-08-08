@@ -55,6 +55,8 @@ class VideoRenderSettings:
     bgm_fade_in: float = 0.0
     bgm_fade_out: float = 0.0
     gap_seconds: float = 0.0
+    fade_out_seconds: float = 0.0
+    fade_in_seconds: float = 0.0
     subtitle_font: str = "Arial"
     subtitle_size: int = 36
     subtitle_color: str = "&H00FFFFFF"
@@ -228,14 +230,21 @@ class FfmpegVideoRenderer(VideoRenderer):
             background_color=self._settings.subtitle_background_color,
             background_opacity=self._settings.subtitle_background_opacity,
         )
+        total_duration = sum(scene.duration_seconds for scene in scenes) + gap_seconds
+        subtitled_label = "video" if self._settings.fade_out_seconds <= 0 else "video_subtitled"
         filters.append(
             f"[concatenated_video]subtitles=filename='{subtitle_path}':charenc=UTF-8:"
-            f"force_style='{subtitle_style}'[video]"
+            f"force_style='{subtitle_style}'[{subtitled_label}]"
         )
+        if self._settings.fade_out_seconds > 0:
+            # エンディングへの結合を見据え、本編終了時に画面のみフェードアウトする
+            # （BGM/ナレーション音声はここでは変更しない）。
+            fade_out = min(self._settings.fade_out_seconds, total_duration)
+            fade_start = max(0.0, total_duration - fade_out)
+            filters.append(f"[{subtitled_label}]fade=t=out:st={fade_start:.3f}:d={fade_out:.3f}[video]")
         if bgm_input_index is None:
             filters.append("[narration]anull[audio]")
         else:
-            total_duration = sum(scene.duration_seconds for scene in scenes) + gap_seconds
             fade_in = min(self._settings.bgm_fade_in, total_duration)
             fade_out = min(self._settings.bgm_fade_out, total_duration)
             fade_out_start = max(0.0, total_duration - fade_out)

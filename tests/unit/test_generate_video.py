@@ -190,6 +190,34 @@ class GenerateVideoTests(unittest.TestCase):
             self.assertIn("00:00:02,000", captured_temp_subtitle_text[0])
             self.assertNotIn("00:00:01,000", captured_temp_subtitle_text[0])
 
+    def test_fade_out_seconds_zero_adds_no_fade_filter(self) -> None:
+        renderer = FfmpegVideoRenderer(
+            duration_provider=FakeDurationProvider(),
+            settings=VideoRenderSettings(1920, 1080, 30, False, Path("unused.mp3"), 0.0),
+        )
+        scenes = (_single_image_scene(1, 2.0), _single_image_scene(2, 3.0))
+
+        command = renderer.build_command(scenes, Path("subtitles.srt"), Path("video.mp4"))
+        filter_graph = command[command.index("-filter_complex") + 1]
+
+        self.assertNotIn("fade=t=", filter_graph)
+
+    def test_fade_out_seconds_applies_fade_at_end_of_total_duration(self) -> None:
+        renderer = FfmpegVideoRenderer(
+            duration_provider=FakeDurationProvider(),
+            settings=VideoRenderSettings(
+                1920, 1080, 30, False, Path("unused.mp3"), 0.0, gap_seconds=1.0, fade_out_seconds=0.5,
+            ),
+        )
+        scenes = (_single_image_scene(1, 2.0), _single_image_scene(2, 3.0))
+
+        command = renderer.build_command(scenes, Path("subtitles.srt"), Path("video.mp4"))
+        filter_graph = command[command.index("-filter_complex") + 1]
+
+        # 合計秒数(2.0+3.0+1.0=6.0)の末尾0.5秒だけ画面がフェードアウトする。
+        self.assertIn("fade=t=out:st=5.500:d=0.500", filter_graph)
+        self.assertIn("[video_subtitled]fade=t=out", filter_graph)
+
     def test_subtitle_background_box_is_added_to_force_style(self) -> None:
         renderer = FfmpegVideoRenderer(
             duration_provider=FakeDurationProvider(),

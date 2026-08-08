@@ -36,9 +36,11 @@ def create_ending_manager() -> EndingManager:
     templates = TemplateManager(settings.templates_dir)
     configured_bgm = str(bgm["path"])
     bgm_file = settings.config_dir.parent / configured_bgm
+    ending_settings = EndingSettings.from_config(values.get("ending", {}))
     renderer_settings = VideoRenderSettings(
         width=int(video["width"]), height=int(video["height"]), fps=int(video["fps"]),
         bgm_enabled=bool(bgm["enabled"]), bgm_file=bgm_file, bgm_volume=float(bgm["volume"]),
+        fade_in_seconds=ending_settings.fade_in_seconds,
         subtitle_font=str(subtitles["font"]), subtitle_size=int(subtitles["size"]),
         subtitle_color=str(subtitles["color"]),
         subtitle_position=str(subtitles.get("position", "bottom")),
@@ -78,6 +80,7 @@ def create_ending_manager() -> EndingManager:
             bgm_enabled=bgm_setting.enabled, bgm_file=bgm_setting.file or bgm_file,
             bgm_volume=bgm_setting.volume, bgm_loop=bgm_setting.loop,
             bgm_fade_in=bgm_setting.fade_in, bgm_fade_out=bgm_setting.fade_out,
+            fade_in_seconds=ending_settings.fade_in_seconds,
             subtitle_font=str(template_subtitles["font"]),
             subtitle_size=int(template_subtitles["size"]),
             subtitle_color=str(template_subtitles["color"]),
@@ -112,7 +115,7 @@ def create_ending_manager() -> EndingManager:
         templates, settings.config_dir.parent / "generated_assets" / "endings",
         plugin_manager.create_text_generator(retry_policy), plugin_manager.create_tts_provider(audio, retry_policy),
         FfprobeAudioDurationProvider(settings.ffprobe_executable), SrtBuilder(), FfmpegEndingRenderer(renderer_settings),
-        QualityChecker(load_quality_rules(quality)), EndingSettings.from_config(values.get("ending", {})),
+        QualityChecker(load_quality_rules(quality)), ending_settings,
         cache, narration_fingerprint, renderer_for_template,
         asset_fingerprint_for_template, tts_provider_for_template,
     )

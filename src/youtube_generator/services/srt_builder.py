@@ -14,12 +14,12 @@ class SubtitleCue:
 class SrtBuilder:
     """音声時間に合わせた連続SRT字幕を生成する。"""
 
-    def build(self, cues: tuple[SubtitleCue, ...]) -> str:
-        """字幕キューからSRT形式の文字列を返す。"""
+    def build(self, cues: tuple[SubtitleCue, ...], start_offset_seconds: float = 0.0) -> str:
+        """字幕キューからSRT形式の文字列を返す。start_offset_secondsだけ開始時刻を遅らせる。"""
         if not cues:
             raise ValueError("字幕キューがありません。")
 
-        elapsed_milliseconds = 0
+        elapsed_milliseconds = round(start_offset_seconds * 1000)
         blocks: list[str] = []
         for index, cue in enumerate(cues, start=1):
             if not cue.text.strip() or cue.duration_seconds <= 0:
