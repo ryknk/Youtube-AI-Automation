@@ -1,1 +1,1 @@
-Render the scene as a historically accurate, photorealistic documentary photograph, with clothing and architecture appropriate to the depicted period
+Render the scene as a historically accurate, photorealistic photograph, with clothing and architecture appropriate to the depicted period
