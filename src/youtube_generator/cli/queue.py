@@ -76,7 +76,9 @@ def run_queue(arguments: list[str]) -> None:
         manager.delete(args.job_id)
         print(f"削除しました: {args.job_id}")
     elif args.command == "clear":
-        if not args.yes and input("キュー内の全ジョブを削除します。Continue? [y/N] ").strip().lower() != "y":
+        if not args.yes:
+            print("キュー内の全ジョブを削除します。Continue? [y/N] ", flush=True)
+        if not args.yes and input().strip().lower() != "y":
             print("キューのクリアを中止しました。")
             return
         print(f"{manager.clear()} 件のジョブを削除しました。")

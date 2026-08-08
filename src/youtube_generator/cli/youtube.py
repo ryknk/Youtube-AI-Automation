@@ -48,7 +48,9 @@ def run_youtube(arguments: list[str]) -> None:
     publish_at = datetime.fromisoformat(args.publish_at) if args.command == "schedule" else None
     request = _build_request(manager, args.job_id, privacy, str(config["category_id"]), publish_at)
     print(f"動画: {request.video_file}\nタイトル: {request.title}\n概要欄: {request.description}\n公開設定: {request.privacy}\n予約日時: {request.publish_at}")
-    if not args.yes and input("Continue? [y/N] ").strip().lower() != "y":
+    if not args.yes:
+        print("Continue? [y/N] ", flush=True)
+    if not args.yes and input().strip().lower() != "y":
         print("投稿を中止しました。")
         return
     logger.info("job_id=%s: YouTubeアップロードを開始します。", args.job_id)
