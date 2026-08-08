@@ -445,7 +445,7 @@ queue:
   # 1件の失敗時に後続ジョブの処理も停止するか
   stop_on_error: false
   # キュー実行時にサムネイル生成工程をスキップするか
-  skip_thumbnail: true
+  skip_thumbnail: false
 
 # YouTubeアップロードの設定
 youtube:
