@@ -81,7 +81,7 @@ image:
     # 4 または 8 を指定するとその step数専用のLightning蒸留版を使用する（推奨・高速）。
     # nullにすると非蒸留版を使用し、num_inference_stepsを自由に指定できる
     # （未指定時は40 stepsを既定値として使用、処理時間はさらに増加する）。
-    lightning_steps: 8
+    lightning_steps: null
     # nullの場合はlightning_stepsの値（8）を使用する。
     num_inference_steps: null
     true_cfg_scale: 4.0

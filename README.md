@@ -276,7 +276,7 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 `--generate-scene-descriptions`は、[後述の`scene_description`](#シーン画像プロンプト用の場面説明生成scene_description)が有効な場合に、画像プロンプト用の場面説明（`sceneNN_MM.description.txt`）だけを独立して生成する任意の工程です。省略しても`--generate-images`実行時に内部で同様の呼び出しが行われるため、キューを使わずに1件実行する場合も必須ではありません。画像生成側の設定だけを変更して`--generate-images`をやり直したい場合や、場面説明だけを`--force`で再生成したい場合に、この工程を独立して呼び出せます。
 
-`--generate-images`はシーン画像の生成のみを行います。`--edit-images`は生成済みの`scene*.png`に対する後述の[キャプション帯除去（scene_edit）](#シーン画像の後処理でキャプション帯を除去するscene_edit)のみを行う別コマンドです。2つのモデルを同一プロセス内で交互にロードするとVRAM/システムメモリを圧迫しやすいため、あえて別プロセス（別コマンド）に分離しています。`image.scene_edit.enabled`が`false`（既定）の場合、`--edit-images`は何もせず終了します。
+`--generate-images`はシーン画像の生成のみを行います。`--edit-images`は生成済みの`scene*.png`に対する後述の[キャプション帯除去（scene_edit）](#シーン画像の後処理でキャプション帯を除去するscene_edit)のみを行う別コマンドです。2つのモデルを同一プロセス内で交互にロードするとVRAM/システムメモリを圧迫しやすいため、あえて別プロセス（別コマンド）に分離しています。`image.scene_edit.enabled`が`false`（既定）の場合、フォルダ指定（後述のフォルダ一括モード）での`--edit-images`は何もせず終了します。
 
 中断されたジョブの再試行等で`--generate-images`/`--edit-images`を同じ作業フォルダに対して再実行した場合、既に生成済みの`sceneNN_MM.png`や、同じ編集設定で既に編集済みの画像はスキップされ、未処理分のみが処理されます（無駄なAPI課金・GPU処理を避けるため）。キャッシュ・既存ファイルの状態を無視してすべて生成・編集し直したい場合は`--force`を付けてください。
 
@@ -291,7 +291,7 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 .\run.cmd --edit-images "$workDir\scene03_02.png" "$workDir\scene05_01.png" --template science
 ```
 
-個別ファイル指定時は、フォルダ横断で選んだ画像を指定できるようフォルダ単位のキャッシュ（`--generate-images`が書き出す生成キャッシュキー）とは紐付けません。編集設定（`image.scene_edit`・`image.qwen_image_edit_nunchaku_local`）が変わっていなければ、同じファイルを指定しても既に編集済みの画像は再編集されません（二重編集による画質劣化を避けるため）。無視して再編集したい場合は`--force`を付けてください。
+個別ファイル指定時は、フォルダ横断で選んだ画像を指定できるようフォルダ単位のキャッシュ（`--generate-images`が書き出す生成キャッシュキー）とは紐付けません。編集設定（`image.scene_edit`・`image.qwen_image_edit_nunchaku_local`）が変わっていなければ、同じファイルを指定しても既に編集済みの画像は再編集されません（二重編集による画質劣化を避けるため）。無視して再編集したい場合は`--force`を付けてください。また、個別ファイル指定時はユーザーが明示的に編集を要求しているとみなし、`image.scene_edit.enabled`が`false`でも編集を実行します（フォルダ一括モードのみ`enabled`に従いスキップします）。
 
 台本、シーン分割、音声、画像、メタデータ、サムネイルの生成では外部API利用料が発生します。字幕生成と動画レンダリングはローカルのFFmpegを使用します。
 

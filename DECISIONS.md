@@ -417,6 +417,66 @@
 
 ---
 
+## Qwen-Image-Edit（nunchaku）に参照画像入力を追加し、テンプレート単位で編集設定を上書きできるようにした
+
+**課題**: シーン画像の後処理（`scene_edit`）は編集対象画像1枚のみを`QwenImageEditNunchakuLocalImageEditor`へ渡す設計で、テンプレートごとに「統一デザインのキャラクターへ寄せる」といった参照画像を使った編集ができなかった。また`image.qwen_image_edit_nunchaku_local`はconfig.yaml側の単一設定しか持てず、テンプレートごとに`prompt`等を変えられなかった。
+
+**決定**: `QwenImageEditNunchakuLocalSettings`に`reference_image`（任意のパス、既定`null`）を追加し、設定時はQwenImageEditPlusPipeline（2509の複数画像入力対応パイプライン）へ編集対象画像と合わせて2枚を渡す方式にした。あわせて`TemplateManager.image_edit_settings()`を新設し、`video.yaml`の`image.qwen_image_edit_nunchaku_local`を共通設定→`default`テンプレート→選択テンプレートの順に差分マージする（既存の`audio.voicevox`/`subtitles`/`ending.subtitles`と同じ差分マージパターンを踏襲）。`reference_image`の相対パスは、それを定義したテンプレートのディレクトリ基準で絶対パスへ解決する。
+
+**理由**: 既存の差分マージパターンを再利用することで実装・レビューコストを抑えつつ（CLAUDE.mdの大規模リファクタリング禁止方針に合致）、テンプレートごとに異なる編集内容（参照画像・プロンプト）を指定できるようにするため。`lightning_steps`/`num_inference_steps`/`width`/`height`/`seed`/`model_cache_dir`/`reference_image`の7項目のみ`null`を「未指定として安全に上書きできる」設計にしているのは、これら以外の項目に`null`を渡すと型変換エラーや意図しない無効化（例: `ending.subtitles.enabled: null`）を招くため。
+
+**参照**: [qwen_image_edit_nunchaku_local.py](src/youtube_generator/plugins/image/qwen_image_edit_nunchaku_local.py)、[template_service.py](src/youtube_generator/services/template_service.py)、READMEの「テンプレート別画像編集設定（Qwen-Image-Edit参照画像）」「video.yamlで上書きできる設定の一覧」、`templates/psychology/character_reference.png`（利用例）。
+
+---
+
+## `--edit-images`の個別ファイル指定時は、`image.scene_edit.enabled=false`でも編集を実行する
+
+**課題**: `--edit-images`にファイルを直接複数指定するモード（前項参照）を追加した後も、`plugin_manager.create_image_editor()`は`image.scene_edit.enabled`が`false`（既定）だと常に`None`を返しており、フォルダ一括モードと同じ理由でスキップされていた。しかし個別ファイル指定は、ユーザーが特定の画像を見て明示的に編集を依頼している操作であり、パイプライン自動実行時の既定スキップとは意図が異なる。
+
+**決定**: `PluginManager.create_image_editor()`に`force: bool = False`引数を追加し、`--edit-images`が個別ファイル指定モードのときのみ`force=True`で呼び出すようにした。フォルダ一括モード（パイプライン自動実行が使う従来の呼び出し）は`force=False`のまま据え置き、`enabled=false`なら引き続きスキップする。
+
+**理由**: `enabled=false`は「パイプライン内で自動的には編集しない」という既定挙動の制御であり、ユーザーがコマンドで名指しした画像の編集意図までは制限すべきでないと判断したため。
+
+**参照**: [plugins/manager.py](src/youtube_generator/plugins/manager.py)の`create_image_editor()`、[cli/main.py](src/youtube_generator/cli/main.py)。
+
+---
+
+## 本編・エンディング接続部に画面のみのフェードイン/アウトを追加し、既存のend_padding方式を踏襲してstart_paddingも新設した
+
+**課題**: 本編からエンディングへの切り替わりが唐突だった。またエンディング側は末尾の余白（`end_padding_seconds`）のみ持ち、冒頭に余白を作る手段がなかった。
+
+**決定**: `ending.main_fade_out_seconds`（既定0.5秒、本編終了時）・`ending.fade_in_seconds`（既定0.5秒、エンディング開始時）を追加し、ffmpegの`fade`フィルターで映像のみをフェードさせる（BGM・ナレーション音声は対象外）。`main_fade_out_seconds`は`ending.auto_append: false`（エンディング非結合）の場合は常に無効化する。あわせて`ending.start_padding_seconds`（既定0.5秒）を新設し、既存の`end_padding_seconds`と対称になるよう、最初の画像の表示時間延長・ナレーション音声の`adelay`による遅延・字幕開始時刻のオフセット（`SrtBuilder.build(start_offset_seconds=...)`）を実装した。1画像のみのエンディングでは最初=最後の画像のため、start・end両方の延長が加算される。
+
+**理由**: 既存の`end_padding_seconds`実装（1枚目/最後の画像を延長する方式）と対称のパターンを再利用することで、変更範囲とレビューコストを抑えるため。フェードを映像のみに限定したのは、音声（ナレーション・BGM）側には既存の`bgm_fade_in`/`bgm_fade_out`が別途あり、無関係な音声挙動を変えないため。
+
+**参照**: [ending/manager.py](src/youtube_generator/ending/manager.py)、[ending/renderer.py](src/youtube_generator/ending/renderer.py)、[ffmpeg_video_renderer.py](src/youtube_generator/infrastructure/ffmpeg_video_renderer.py)、[srt_builder.py](src/youtube_generator/services/srt_builder.py)。
+
+---
+
+## シーン画像プロンプトの品質対策を、共通ImagePromptBuilder（抽象的な指示）とプロバイダー別negative_prompt（具体的な抑制語）に役割分担した
+
+**課題**: 生成画像で(1)実在企業のロゴ・商標が写り込む、(2)屋内・屋外など複数の場所が1枚の画像に混在する、という2つの問題が確認された。対策として`ImagePromptBuilder`（ポジティブプロンプト）に具体的な抑制文言を追加する案を試したが、屋内外混在対策では「indoor office interior」「outdoor street scene」のような具体的な名詞を例示すると、かえってモデルがその構図（対比構図）へ誘導されやすいことが実機確認で判明した。
+
+**決定**: 共通`ImagePromptBuilder`には「Product design: 汎用・無地のデザインにする」「Setting: 単一の場所のみを一貫して描写する（屋内なら壁・床・天井が揃った完全に囲まれた部屋、屋外なら屋内什器を含めない）」という抽象的な指示のみを持たせ、実在ブランド名（Apple/Windows/Microsoft/Google/Samsung/Sony/Nikeロゴ等）や複数場所混在を示す具体語（"multiple locations in one image"等）はQwen系プロバイダーの`negative_prompt`（`config/config.yaml`の`image.qwen_image_local`/`qwen_image_nunchaku_local`）側に追加した。あわせて、顔の目の下に不自然な筋が生成される問題（`true_cfg_scale`を4.0/6.0いずれにしても発生することを実機確認済み）に対しても、CFG値の調整ではなく`negative_prompt`へ`under-eye lines`/`tear trough`等を追加する方式で対応した。
+
+**理由**: ポジティブプロンプト側は抽象的な指示に留めて意図しない構図誘導を避け、抑制したい具体的要素はモデルが直接抑制できる`negative_prompt`側に寄せる、という役割分担にすることで、プロンプトチューニングの見通しを良くするため。
+
+**参照**: [image_prompt_builder.py](src/youtube_generator/services/image_prompt_builder.py)、`config/config.yaml`の`image.qwen_image_local.negative_prompt`/`image.qwen_image_nunchaku_local.negative_prompt`、[openai_scene_visual_describer.py](src/youtube_generator/infrastructure/openai_scene_visual_describer.py)（場面説明生成側にも単一場所限定の指示を追加）。
+
+---
+
+## `queue clear`/`youtube upload`の確認プロンプトで、確認メッセージを`input()`と分離してflushする
+
+**課題**: `input("メッセージ Continue? [y/N] ")`は、実行環境によってはメッセージが表示される前に`input()`が入力待ちでブロックし、ユーザーから見てメッセージが表示されないまま応答待ちになっているように見える不具合があった。
+
+**決定**: 確認メッセージを`print(..., flush=True)`で明示的にフラッシュしてから、`input()`は空プロンプトで呼び出す形に分離した。
+
+**理由**: `print`と`input`のプロンプト文字列を1つの`input()`呼び出しにまとめると、標準出力のバッファリング挙動次第でメッセージの表示タイミングが保証されないため、明示的な`flush=True`で表示順序を確定させた。
+
+**参照**: [cli/queue.py](src/youtube_generator/cli/queue.py)、[cli/youtube.py](src/youtube_generator/cli/youtube.py)。
+
+---
+
 ## 関連ドキュメント
 
 - [CLAUDE.md](CLAUDE.md) — 開発方針・アーキテクチャ・コーディング規約
