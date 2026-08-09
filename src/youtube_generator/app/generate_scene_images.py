@@ -78,6 +78,7 @@ class GenerateSceneImagesUseCase:
             zip(pending, prompt_sources), 1,
         ):
             prompt = self._prompt_builder.build(prompt_source)
+            self.prompt_file_for(image_file).write_text(prompt, encoding="utf-8")
             self._image_generator.generate_image(prompt, image_file)
             self._logger.info("画像生成: (%d/%d)", skipped + progress, total)
 
@@ -135,6 +136,13 @@ class GenerateSceneImagesUseCase:
         """画像ファイルパスから、対応する場面説明ファイル（sceneNN_MM.description.txt）を求める。
         GenerateSceneDescriptionsUseCaseとの間で共有する命名規則。"""
         return image_file.with_name(f"{image_file.stem}.description.txt")
+
+    @staticmethod
+    def prompt_file_for(image_file: Path) -> Path:
+        """画像ファイルパスから、実際に画像生成へ渡した画像プロンプトファイル
+        （sceneNN_MM.prompt.txt）を求める。画像ファイルと同じフォルダ（scenes_dir、
+        ジョブ実行時は.workフォルダ）へ保存し、生成内容の確認・デバッグに使う。"""
+        return image_file.with_name(f"{image_file.stem}.prompt.txt")
 
     @classmethod
     def build_plan(

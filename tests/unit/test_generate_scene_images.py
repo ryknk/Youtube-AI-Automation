@@ -89,6 +89,39 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
             self.assertIn("clean 2D digital illustration", generator.prompts[0])
             self.assertNotIn("realistic photography", generator.prompts[0])
 
+    def test_execute_saves_prompt_file_next_to_each_generated_image(self) -> None:
+        """組み立てた画像プロンプトを、画像と同じフォルダ（scenes_dir、ジョブ実行時は.work）へ
+        sceneNN_MM.prompt.txtとして保存し、後から生成内容を確認できるようにする。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            generator = MockImageProvider()
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), generator,
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+            )
+
+            image_files = use_case.execute(scenes_dir)
+
+            prompt_file = GenerateSceneImagesUseCase.prompt_file_for(image_files[0])
+            self.assertEqual(prompt_file, scenes_dir / "scene01_01.prompt.txt")
+            self.assertTrue(prompt_file.is_file())
+            self.assertEqual(prompt_file.read_text(encoding="utf-8"), generator.prompts[0])
+
+    def test_execute_does_not_rewrite_prompt_file_for_already_generated_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene01_01.png").write_bytes(b"already-generated")
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), MockImageProvider(),
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+            )
+
+            use_case.execute(scenes_dir)
+
+            self.assertFalse((scenes_dir / "scene01_01.prompt.txt").exists())
+
     def test_execute_logs_progress_against_total_image_count(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             scenes_dir = Path(temporary_directory)
