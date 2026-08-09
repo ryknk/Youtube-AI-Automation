@@ -213,15 +213,17 @@ class PluginManager:
         return OpenAISceneVisualDescriber(self._api_key(), str(model), retry_policy)
 
     def create_image_editor(
-        self, image_settings: dict[str, Any], retry_policy: RetryPolicy,
+        self, image_settings: dict[str, Any], retry_policy: RetryPolicy, *, force: bool = False,
     ) -> ImageEditor | None:
         """``image.scene_edit.enabled`` がtrueの場合のみ生成する。falseまたは未設定の場合は
-        Noneを返し、呼び出し側は従来どおり生成済み画像をそのまま使う（編集ステップをスキップ）。"""
+        Noneを返し、呼び出し側は従来どおり生成済み画像をそのまま使う（編集ステップをスキップ）。
+        ``force=True``の場合はenabledの値に関わらず生成する（--edit-imagesで個別に画像を
+        指定した場合など、ユーザーが明示的に編集を要求しているケース向け）。"""
         del retry_policy  # ローカル実行プロバイダーはリトライ非対応のため未使用（他ファクトリメソッドとの引数統一のみ目的）。
         scene_edit_settings = image_settings.get("scene_edit", {})
         if not isinstance(scene_edit_settings, dict):
             raise ValueError("config.yaml の image.scene_edit 設定が不正です。")
-        if not bool(scene_edit_settings.get("enabled", False)):
+        if not force and not bool(scene_edit_settings.get("enabled", False)):
             return None
         provider_name = str(scene_edit_settings.get("provider", "qwen_image_edit_nunchaku_local")).lower()
         if provider_name == "qwen_image_edit_nunchaku_local":

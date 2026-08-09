@@ -430,6 +430,17 @@ class PluginManagerTests(unittest.TestCase):
         self.assertIsNone(editor)
 
     @patch("youtube_generator.plugins.manager.QwenImageEditNunchakuLocalImageEditor")
+    def test_image_editor_force_bypasses_disabled_flag(self, editor_class) -> None:  # type: ignore[no-untyped-def]
+        """--edit-imagesで画像を個別指定した場合など、force=Trueならenabled=falseでも生成する。"""
+        manager = PluginManager(Settings(), {}, {})
+        image_settings = {"scene_edit": {"enabled": False}}
+
+        editor = manager.create_image_editor(image_settings, RetryPolicy(max_attempts=1), force=True)
+
+        self.assertIsNotNone(editor)
+        editor_class.assert_called_once()
+
+    @patch("youtube_generator.plugins.manager.QwenImageEditNunchakuLocalImageEditor")
     def test_image_editor_creates_qwen_image_edit_nunchaku_local_when_enabled(self, editor_class) -> None:  # type: ignore[no-untyped-def]
         manager = PluginManager(Settings(), {}, {})
         image_settings = {

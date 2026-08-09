@@ -800,7 +800,19 @@ def run() -> None:
                         image_settings, args.template,
                     ),
                 }
-            image_editor = plugin_manager.create_image_editor(image_settings, retry_policy)
+            # --edit-imagesにはフォルダ（従来どおりフォルダ内scene*.pngを全件対象）か、
+            # 編集したい画像ファイルを直接複数指定のどちらも渡せる。フォルダ全件の編集は
+            # 時間がかかるため、気になった画像だけを指定して部分的に再編集したい場合は後者を使う。
+            edit_targets = list(args.edit_images)
+            is_folder_mode = len(edit_targets) == 1 and edit_targets[0].is_dir()
+
+            # 個別ファイル指定モードはユーザーが明示的に編集を要求しているため、
+            # image.scene_edit.enabled=falseでもスキップしない（forceで上書き）。
+            # フォルダ一括モードはパイプライン自動実行が使う従来の挙動を維持し、
+            # enabled=falseなら引き続きスキップする。
+            image_editor = plugin_manager.create_image_editor(
+                image_settings, retry_policy, force=not is_folder_mode,
+            )
             if image_editor is None:
                 logger.info("image.scene_edit.enabled が false のため画像編集をスキップします。")
                 history.record(run_id, "run_completed")
@@ -815,12 +827,6 @@ def run() -> None:
                 json.dumps(edit_provider_settings, ensure_ascii=False, sort_keys=True),
                 "image-edit-v1",
             )
-
-            # --edit-imagesにはフォルダ（従来どおりフォルダ内scene*.pngを全件対象）か、
-            # 編集したい画像ファイルを直接複数指定のどちらも渡せる。フォルダ全件の編集は
-            # 時間がかかるため、気になった画像だけを指定して部分的に再編集したい場合は後者を使う。
-            edit_targets = list(args.edit_images)
-            is_folder_mode = len(edit_targets) == 1 and edit_targets[0].is_dir()
 
             if is_folder_mode:
                 source_directory = edit_targets[0]
