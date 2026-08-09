@@ -210,7 +210,10 @@ image:
     # 屋内・屋外など複数の場所が1枚の画像内に混在する問題への対策も追加している
     # （positive prompt側では具体的な名詞を例示すると逆にその構図へ誘導されやすいため、
     # image_prompt_builder.pyのSetting指示は抽象的な表現のみとし、具体的な抑制はこちら側で行う）。
-    negative_prompt: "watermark, logo, YouTube logo, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border, multiple locations in one image, two different places combined, composite scene, chyron, lower third, news ticker, breaking news banner"
+    # 顔の目の下あたりに不自然な筋が生成される問題への対策としてunder-eye lines等を追加。
+    # true_cfg_scale 4.0/6.0どちらでも同様に発生することを確認済みのため、CFG値ではなく
+    # negative_prompt側で直接抑制する。
+    negative_prompt: "watermark, logo, YouTube logo, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border, multiple locations in one image, two different places combined, composite scene, chyron, lower third, news ticker, breaking news banner, under-eye lines, tear trough, dark circles, facial creases, skin wrinkles, facial blemishes"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
@@ -262,10 +265,10 @@ image:
     low_vram_num_blocks_on_gpu: 1
     num_inference_steps: 50
     # Qwen-Imageの公式サンプルはtrue_cfg_scale=4.0を使用。字幕・キャプション風の文字が
-    # 画面内へ写り込む問題を抑える場合、公式既定値より引き上げてnegative_promptへの
-    # 追従を強める（上げすぎると彩度・コントラストが過剰になる副作用があるため、
+    # 画面内へ写り込む問題を抑えるため、公式既定値より引き上げてnegative_promptへの
+    # 追従を強めている（上げすぎると彩度・コントラストが過剰になる副作用があるため、
     # 6.0〜7.0程度を目安にする）。
-    true_cfg_scale: 4.0
+    true_cfg_scale: 6.0
     # モデルへ渡す生成サイズ（scene_size/thumbnail_sizeとは独立）。シーン画像生成用途では
     # この解像度のまま保存され、scene_size（例:1920x1080）への整形は行わない（動画レンダリング時に
     # ffmpegのscaleフィルタで最終解像度へ引き伸ばされるため）。サムネイル用途ではレンダリング側で
@@ -287,7 +290,10 @@ image:
     # 屋内・屋外など複数の場所が1枚の画像内に混在する問題への対策も追加している
     # （positive prompt側では具体的な名詞を例示すると逆にその構図へ誘導されやすいため、
     # image_prompt_builder.pyのSetting指示は抽象的な表現のみとし、具体的な抑制はこちら側で行う）。
-    negative_prompt: "watermark, logo, YouTube logo, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border, multiple locations in one image, two different places combined, composite scene, chyron, lower third, news ticker, breaking news banner"
+    # 顔の目の下あたりに不自然な筋が生成される問題への対策としてunder-eye lines等を追加。
+    # true_cfg_scale 4.0/6.0どちらでも同様に発生することを確認済みのため、CFG値ではなく
+    # negative_prompt側で直接抑制する。
+    negative_prompt: "watermark, logo, YouTube logo, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border, multiple locations in one image, two different places combined, composite scene, chyron, lower third, news ticker, breaking news banner, under-eye lines, tear trough, dark circles, facial creases, skin wrinkles, facial blemishes"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
