@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import logging
 import shutil
 import sys
 from dataclasses import replace
@@ -45,6 +46,7 @@ from youtube_generator.services.video_settings import load_video_settings
 from youtube_generator.services.bgm_manager import BGMManager
 from youtube_generator.infrastructure.final_bgm_renderer import FinalBGMRenderer, FinalRenderSettings
 from youtube_generator.plugins.alignment.factory import create_alignment_provider
+from youtube_generator.plugins.base.image_editor import ImageEditor
 from youtube_generator.plugins.manager import PluginManager
 from youtube_generator.cli.ending import run_ending
 from youtube_generator.cli.ending import create_ending_manager
@@ -80,6 +82,27 @@ def _mark_edited(image_file: Path, resume_key: str) -> None:
     _edit_marker_file(image_file).write_text(resume_key, encoding="utf-8")
 
 
+def _edit_pending_files(
+    image_editor: ImageEditor, image_files: tuple[Path, ...], resume_key: str, force: bool,
+    logger: logging.Logger,
+) -> tuple[Path, ...]:
+    """中断されたジョブの再試行等で一部の画像が同じ編集設定で既に編集済みの場合、
+    二重編集（破壊的処理のため画質劣化を招く）を避けるためスキップする。
+    --force指定時はこの判定を無視し、常に全件編集し直す。"""
+    total = len(image_files)
+    pending_files = image_files if force else [
+        image_file for image_file in image_files if not _is_already_edited(image_file, resume_key)
+    ]
+    skipped = total - len(pending_files)
+    if skipped:
+        logger.info("編集済みの画像 %d/%d 件をスキップします。", skipped, total)
+    for progress, image_file in enumerate(pending_files, 1):
+        image_editor.edit(image_file)
+        _mark_edited(image_file, resume_key)
+        logger.info("画像編集: (%d/%d)", skipped + progress, total)
+    return image_files
+
+
 def _parse_image_size(size: str) -> tuple[int, int] | None:
     """"WxH"形式の画像サイズ設定を解析する。解析できない場合は品質チェックをスキップするためNoneを返す。"""
     try:
@@ -101,7 +124,13 @@ def create_parser() -> argparse.ArgumentParser:
         help="sceneNN.txt があるフォルダのパス（画像プロンプト用の場面説明のみを生成）",
     )
     input_group.add_argument("--generate-images", type=Path, help="sceneNN.txt があるフォルダのパス")
-    input_group.add_argument("--edit-images", type=Path, help="sceneNN_MM.png があるフォルダのパス")
+    input_group.add_argument(
+        "--edit-images", type=Path, nargs="+",
+        help=(
+            "sceneNN_MM.png があるフォルダのパス（フォルダ内全件が対象）。"
+            "または編集したい画像ファイルを直接複数指定（一部の画像だけを編集したい場合）"
+        ),
+    )
     input_group.add_argument("--generate-subtitles", type=Path, help="sceneNN.mp3 があるフォルダのパス")
     input_group.add_argument("--generate-video", type=Path, help="シーン素材があるフォルダのパス")
     input_group.add_argument("--generate-metadata", type=Path, help="完成動画とscript.txtがあるフォルダのパス")
@@ -206,7 +235,7 @@ def run() -> None:
         if args.generate_images:
             logger.info("画像化対象のフォルダ: %s", args.generate_images)
         if args.edit_images:
-            logger.info("画像編集対象のフォルダ: %s", args.edit_images)
+            logger.info("画像編集対象: %s", ", ".join(str(path) for path in args.edit_images))
         if args.generate_subtitles:
             logger.info("字幕生成対象のフォルダ: %s", args.generate_subtitles)
         if args.generate_video:
@@ -779,10 +808,6 @@ def run() -> None:
                 set_active_logger(None)
                 return
 
-            image_files = tuple(sorted(args.edit_images.glob("scene*.png")))
-            if not image_files:
-                raise FileNotFoundError(f"scene*.png が見つかりません: {args.edit_images}")
-
             edit_provider_settings = image_settings.get(edit_provider_name, {})
             edit_fingerprint = CacheManager.make_key(
                 edit_provider_name,
@@ -790,46 +815,59 @@ def run() -> None:
                 json.dumps(edit_provider_settings, ensure_ascii=False, sort_keys=True),
                 "image-edit-v1",
             )
-            # 生成キャッシュキー（--generate-imagesが書き出したsidecar）と編集設定から編集キャッシュ
-            # キーを求める。scene*.png自体の内容は編集によって書き換わるため、その内容をハッシュ元に
-            # すると再実行時に既に編集済みの画像を再度編集してしまう（二重編集）。生成キャッシュキーは
-            # 編集で変化しない安定した値のため、これを使うことで再実行時も同じキーを再利用できる。
-            sidecar_file = args.edit_images / _IMAGE_CACHE_KEY_SIDECAR
-            generation_cache_key = sidecar_file.read_text(encoding="utf-8").strip() if sidecar_file.is_file() else None
-            edit_cache_key = (
-                CacheManager.make_key(generation_cache_key, edit_fingerprint)
-                if generation_cache_key else None
-            )
 
-            # 生成キャッシュキーが得られない場合（sidecar未生成等）でも、編集設定単体の
-            # フィンガープリントを再開判定に使えるようフォールバックする。
-            resume_key = edit_cache_key or edit_fingerprint
+            # --edit-imagesにはフォルダ（従来どおりフォルダ内scene*.pngを全件対象）か、
+            # 編集したい画像ファイルを直接複数指定のどちらも渡せる。フォルダ全件の編集は
+            # 時間がかかるため、気になった画像だけを指定して部分的に再編集したい場合は後者を使う。
+            edit_targets = list(args.edit_images)
+            is_folder_mode = len(edit_targets) == 1 and edit_targets[0].is_dir()
 
-            if (
-                not args.force and edit_cache_key is not None and cache_manager is not None
-                and cache_manager.exists(edit_cache_key, "image_edited")
-            ):
-                image_files = cache_manager.restore_files(edit_cache_key, "image_edited", args.edit_images)
-                logger.info("編集済み画像をキャッシュから復元しました。")
-                history.record(run_id, "cache_hit", artifact="image_edited", cache_key=edit_cache_key)
+            if is_folder_mode:
+                source_directory = edit_targets[0]
+                image_files = tuple(sorted(source_directory.glob("scene*.png")))
+                if not image_files:
+                    raise FileNotFoundError(f"scene*.png が見つかりません: {source_directory}")
+
+                # 生成キャッシュキー（--generate-imagesが書き出したsidecar）と編集設定から編集
+                # キャッシュキーを求める。scene*.png自体の内容は編集によって書き換わるため、その内容
+                # をハッシュ元にすると再実行時に既に編集済みの画像を再度編集してしまう（二重編集）。
+                # 生成キャッシュキーは編集で変化しない安定した値のため、これを使うことで再実行時も
+                # 同じキーを再利用できる。
+                sidecar_file = source_directory / _IMAGE_CACHE_KEY_SIDECAR
+                generation_cache_key = (
+                    sidecar_file.read_text(encoding="utf-8").strip() if sidecar_file.is_file() else None
+                )
+                edit_cache_key = (
+                    CacheManager.make_key(generation_cache_key, edit_fingerprint)
+                    if generation_cache_key else None
+                )
+                # 生成キャッシュキーが得られない場合（sidecar未生成等）でも、編集設定単体の
+                # フィンガープリントを再開判定に使えるようフォールバックする。
+                resume_key = edit_cache_key or edit_fingerprint
+
+                if (
+                    not args.force and edit_cache_key is not None and cache_manager is not None
+                    and cache_manager.exists(edit_cache_key, "image_edited")
+                ):
+                    image_files = cache_manager.restore_files(edit_cache_key, "image_edited", source_directory)
+                    logger.info("編集済み画像をキャッシュから復元しました。")
+                    history.record(run_id, "cache_hit", artifact="image_edited", cache_key=edit_cache_key)
+                else:
+                    image_files = _edit_pending_files(image_editor, image_files, resume_key, args.force, logger)
+                    if edit_cache_key is not None and cache_manager is not None:
+                        cache_manager.save_files(edit_cache_key, "image_edited", image_files)
             else:
-                total = len(image_files)
-                # 中断されたジョブの再試行等で一部の画像が同じ編集設定で既に編集済みの場合、
-                # 二重編集（破壊的処理のため画質劣化を招く）を避けるためスキップする。
-                # --force指定時はこの判定を無視し、常に全件編集し直す。
-                pending_files = image_files if args.force else [
-                    image_file for image_file in image_files
-                    if not _is_already_edited(image_file, resume_key)
-                ]
-                skipped = total - len(pending_files)
-                if skipped:
-                    logger.info("編集済みの画像 %d/%d 件をスキップします。", skipped, total)
-                for progress, image_file in enumerate(pending_files, 1):
-                    image_editor.edit(image_file)
-                    _mark_edited(image_file, resume_key)
-                    logger.info("画像編集: (%d/%d)", skipped + progress, total)
-                if edit_cache_key is not None and cache_manager is not None:
-                    cache_manager.save_files(edit_cache_key, "image_edited", image_files)
+                # 個別ファイル指定モード: フォルダ横断で選んだ画像を指定できるため、フォルダ単位の
+                # 生成キャッシュキー（sidecar）とは紐付けず、編集設定のフィンガープリントのみで
+                # 二重編集防止マーカーを判定する（フォルダモードのようなバッチキャッシュの保存・
+                # 復元は指定画像の組み合わせが毎回変わりうるため行わない）。
+                image_files = tuple(sorted(edit_targets))
+                missing_files = [image_file for image_file in image_files if not image_file.is_file()]
+                if missing_files:
+                    raise FileNotFoundError(
+                        "画像ファイルが見つかりません: " + ", ".join(str(image_file) for image_file in missing_files)
+                    )
+                image_files = _edit_pending_files(image_editor, image_files, edit_fingerprint, args.force, logger)
 
             release_image_editor = getattr(image_editor, "release", None)
             if callable(release_image_editor):

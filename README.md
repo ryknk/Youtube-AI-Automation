@@ -285,6 +285,14 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 .\run.cmd --edit-images "$workDir" --template science --force
 ```
 
+`--edit-images`はフォルダを1つ指定すると従来どおりフォルダ内`scene*.png`全件を対象にしますが、字幕帯が残った画像など一部だけをやり直したい場合は、編集したい画像ファイルを直接複数指定できます。全件編集より時間を短縮できます。
+
+```powershell
+.\run.cmd --edit-images "$workDir\scene03_02.png" "$workDir\scene05_01.png" --template science
+```
+
+個別ファイル指定時は、フォルダ横断で選んだ画像を指定できるようフォルダ単位のキャッシュ（`--generate-images`が書き出す生成キャッシュキー）とは紐付けません。編集設定（`image.scene_edit`・`image.qwen_image_edit_nunchaku_local`）が変わっていなければ、同じファイルを指定しても既に編集済みの画像は再編集されません（二重編集による画質劣化を避けるため）。無視して再編集したい場合は`--force`を付けてください。
+
 台本、シーン分割、音声、画像、メタデータ、サムネイルの生成では外部API利用料が発生します。字幕生成と動画レンダリングはローカルのFFmpegを使用します。
 
 既存の台本文だけをAPIなしで品質チェックする場合は、次のように実行します。
