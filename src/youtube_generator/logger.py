@@ -2,13 +2,14 @@
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 
 
 LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+JST = timezone(timedelta(hours=9), name="JST")
 _active_logger: "Logger | None" = None
 
 
@@ -51,7 +52,7 @@ class Logger:
 
     def start(self, theme: str | None) -> None:
         self._theme = theme
-        self._started_at = datetime.now(UTC)
+        self._started_at = datetime.now(JST)
         self._started_at_ticks = perf_counter()
         self._logger.info("開始時間: %s", self._started_at.isoformat())
         self._logger.info("入力テーマ: %s", theme or "(未指定)")
@@ -70,7 +71,7 @@ class Logger:
 
     def finish(self, success: bool, error: Exception | None = None) -> None:
         """実行結果をログと JSON 履歴へ確定する。"""
-        ended_at = datetime.now(UTC)
+        ended_at = datetime.now(JST)
         elapsed = perf_counter() - self._started_at_ticks if self._started_at_ticks is not None else 0.0
         self._logger.info("終了時間: %s", ended_at.isoformat())
         self._logger.info("実行時間: %.2f 秒", elapsed)

@@ -254,7 +254,7 @@ image:
     # （Blackwell/50シリーズはnvfp4、それ以外はint4）。int4 / nvfp4 も明示指定可。
     precision: auto
     # 32: 高速（軽量） / 128: 高品質（重い）
-    rank: 32
+    rank: 128
     # 公式サンプルのしきい値（GB）。GPU VRAMがこれを超える場合はenable_model_cpu_offload、
     # 以下の場合はtransformer.set_offload+enable_sequential_cpu_offloadを使う。
     offload_threshold_gb: 18.0
