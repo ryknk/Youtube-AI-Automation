@@ -123,7 +123,14 @@ def create_parser() -> argparse.ArgumentParser:
         "--generate-scene-descriptions", type=Path,
         help="sceneNN.txt があるフォルダのパス（画像プロンプト用の場面説明のみを生成）",
     )
-    input_group.add_argument("--generate-images", type=Path, help="sceneNN.txt があるフォルダのパス")
+    input_group.add_argument(
+        "--generate-images", type=Path, nargs="+",
+        help=(
+            "sceneNN.txt があるフォルダのパス（フォルダ内の未生成分が対象）。"
+            "または作り直したい画像ファイル（sceneNN_MM.png）を直接複数指定（一部の画像だけを"
+            "生成し直したい場合。指定分は既存の有無に関わらず常に生成し直す）"
+        ),
+    )
     input_group.add_argument(
         "--edit-images", type=Path, nargs="+",
         help=(
@@ -233,7 +240,7 @@ def run() -> None:
         if args.generate_scene_descriptions:
             logger.info("場面説明生成対象のフォルダ: %s", args.generate_scene_descriptions)
         if args.generate_images:
-            logger.info("画像化対象のフォルダ: %s", args.generate_images)
+            logger.info("画像化対象: %s", ", ".join(str(path) for path in args.generate_images))
         if args.edit_images:
             logger.info("画像編集対象: %s", ", ".join(str(path) for path in args.edit_images))
         if args.generate_subtitles:
@@ -725,7 +732,31 @@ def run() -> None:
                 max_images=int(image_settings["max_count"]),
                 scene_visual_describer=scene_visual_describer,
             )
-            image_inputs = tuple(sorted(args.generate_images.glob("scene*.txt")))
+            # --generate-imagesにはフォルダ（従来どおりフォルダ内scene*.txt全件を計画対象にし、
+            # 未生成の画像のみ生成）か、作り直したい画像ファイル（sceneNN_MM.png）を直接複数
+            # 指定のどちらも渡せる。フォルダ全件の生成は時間がかかるため、一部の画像だけを
+            # 作り直したい場合は後者を使う（指定分は既存の有無に関わらず常に生成し直す）。
+            generate_targets = list(args.generate_images)
+            is_folder_mode = len(generate_targets) == 1 and generate_targets[0].is_dir()
+            if is_folder_mode:
+                scenes_dir = generate_targets[0]
+                only_files = None
+            else:
+                if any(target.is_dir() for target in generate_targets):
+                    raise ValueError(
+                        "個別ファイル指定モードにフォルダを含めることはできません: "
+                        + ", ".join(str(target) for target in generate_targets)
+                    )
+                parents = {image_file.resolve().parent for image_file in generate_targets}
+                if len(parents) != 1:
+                    raise ValueError(
+                        "個別ファイル指定時は同じフォルダ内の画像のみ指定できます: "
+                        + ", ".join(str(image_file) for image_file in generate_targets)
+                    )
+                scenes_dir = next(iter(parents))
+                only_files = tuple(generate_targets)
+
+            image_inputs = tuple(sorted(scenes_dir.glob("scene*.txt")))
             # thumbnail_model/thumbnail_sizeはシーン画像に影響しないため、
             # サムネイル専用設定の変更でシーン画像キャッシュを無効化しないようfingerprintから除外する。
             # scene_editは--edit-images側の独立した工程・キャッシュが担うため、生成キャッシュには含めない。
@@ -744,29 +775,33 @@ def run() -> None:
             # --edit-imagesが同じ生成結果に対して再現性のある編集キャッシュキーを組み立てられるよう、
             # 生成キャッシュキーをsidecarファイルへ書き出す（scene*.pngの内容は編集で書き換わるため、
             # png自体のハッシュを編集キャッシュキーの元にすると再実行時に二重編集してしまう）。
-            (args.generate_images / _IMAGE_CACHE_KEY_SIDECAR).write_text(image_cache_key, encoding="utf-8")
-            existing_scene_images = tuple(args.generate_images.glob("scene*.png"))
-            if args.force:
+            (scenes_dir / _IMAGE_CACHE_KEY_SIDECAR).write_text(image_cache_key, encoding="utf-8")
+
+            if only_files is not None:
+                # 個別ファイル指定モード: フォルダ単位のバッチキャッシュ（image_cache_key）は
+                # 指定画像の組み合わせが毎回変わりうるため保存・復元せず、常に指定分だけ生成し直す。
+                image_files = use_case.execute(scenes_dir, only_files=only_files)
+            elif args.force:
                 # --force指定時は既存ファイル・キャッシュの有無を無視し、常に全件生成し直す。
-                image_files = use_case.execute(args.generate_images, force=True)
+                image_files = use_case.execute(scenes_dir, force=True)
                 if cache_manager is not None:
                     cache_manager.save_files(image_cache_key, "image", image_files)
-            elif existing_scene_images:
+            elif (existing_scene_images := tuple(scenes_dir.glob("scene*.png"))):
                 # 中断されたジョブの再試行などでこのフォルダに一部の画像が既に生成・編集済みの
                 # 場合、キャッシュから復元すると編集済みの内容が生成直後の状態で上書きされて
                 # しまうため復元は行わず、既存ファイルを活かして未生成分のみ生成する
                 # （未生成分の判定はGenerateSceneImagesUseCase.executeの存在チェックに委ねる）。
-                image_files = use_case.execute(args.generate_images)
+                image_files = use_case.execute(scenes_dir)
                 # 過去に完了済みバッチのキャッシュが既にある場合、ここでの再保存は編集済み
                 # 内容で「生成直後」キャッシュを汚染しうるため、未キャッシュ時のみ保存する。
                 if cache_manager is not None and not cache_manager.exists(image_cache_key, "image"):
                     cache_manager.save_files(image_cache_key, "image", image_files)
             elif cache_manager is not None and cache_manager.exists(image_cache_key, "image"):
-                image_files = cache_manager.restore_files(image_cache_key, "image", args.generate_images)
+                image_files = cache_manager.restore_files(image_cache_key, "image", scenes_dir)
                 logger.info("画像をキャッシュから復元しました。")
                 history.record(run_id, "cache_hit", artifact="image", cache_key=image_cache_key)
             else:
-                image_files = use_case.execute(args.generate_images)
+                image_files = use_case.execute(scenes_dir)
                 if cache_manager is not None:
                     cache_manager.save_files(image_cache_key, "image", image_files)
             release_image_generator = getattr(image_generator, "release", None)

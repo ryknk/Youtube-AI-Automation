@@ -477,6 +477,18 @@
 
 ---
 
+## `--generate-images`にも画像ファイルの直接複数指定を追加（`--edit-images`と同じ設計）
+
+**課題**: `--generate-images`はフォルダ内`scene*.txt`から計画した`sceneNN_MM.png`のうち未生成分のみを生成する（既存ファイルはスキップ）。生成結果が気に入らず特定の画像だけ作り直したい場合、そのファイルを手動で削除してから再実行する必要があった。`--edit-images`に個別ファイル指定モードを追加した際と同じ動機。
+
+**決定**: `--edit-images`と同じ「フォルダ1件指定＝フォルダモード（既存挙動を完全維持）／それ以外＝個別ファイル指定モード」の分岐を`--generate-images`にも追加した。個別ファイル指定モードでは`GenerateSceneImagesUseCase.execute`に新設した`only_files`引数（計画上の該当`sceneNN_MM.png`のみを対象にし、既存の有無に関わらず常に生成し直す）を使う。指定ファイルは同じフォルダ内である必要があり、フォルダ単位のバッチキャッシュ（`image_cache_key`の保存・復元）とは紐付けない（`--edit-images`の個別ファイル指定モードと同じ理由）。
+
+**理由**: 既存の`--edit-images`個別ファイル指定モードと対称的なUI・実装にすることで一貫性を保ち、変更範囲を最小限にした（`GenerateSceneImagesUseCase.execute`は`only_files=None`の場合の挙動を一切変更していない）。
+
+**参照**: [app/generate_scene_images.py](src/youtube_generator/app/generate_scene_images.py)、[cli/main.py](src/youtube_generator/cli/main.py)、[README.md](README.md)の`--generate-images`個別ファイル指定の項。
+
+---
+
 ## 関連ドキュメント
 
 - [CLAUDE.md](CLAUDE.md) — 開発方針・アーキテクチャ・コーディング規約

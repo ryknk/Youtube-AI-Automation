@@ -89,7 +89,9 @@ class EditPendingFilesTests(unittest.TestCase):
             editor.edit.assert_called_once_with(image_file)
 
 
-class EditImagesArgumentParsingTests(unittest.TestCase):
+class ImageCliArgumentParsingTests(unittest.TestCase):
+    """--edit-images/--generate-imagesの「フォルダ1件 or 画像ファイル複数指定」引数解析のテスト。"""
+
     def test_edit_images_accepts_a_single_folder(self) -> None:
         args = create_parser().parse_args(["--edit-images", "output/work", "--template", "science"])
 
@@ -102,6 +104,21 @@ class EditImagesArgumentParsingTests(unittest.TestCase):
         ])
 
         self.assertEqual(args.edit_images, [Path("output/work/scene01_01.png"), Path("output/work/scene02_01.png")])
+
+    def test_generate_images_accepts_a_single_folder(self) -> None:
+        args = create_parser().parse_args(["--generate-images", "output/work", "--template", "science"])
+
+        self.assertEqual(args.generate_images, [Path("output/work")])
+
+    def test_generate_images_accepts_multiple_explicit_files(self) -> None:
+        args = create_parser().parse_args([
+            "--generate-images", "output/work/scene01_01.png", "output/work/scene02_01.png",
+            "--template", "science",
+        ])
+
+        self.assertEqual(
+            args.generate_images, [Path("output/work/scene01_01.png"), Path("output/work/scene02_01.png")],
+        )
 
 
 if __name__ == "__main__":

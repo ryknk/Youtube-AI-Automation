@@ -54,26 +54,46 @@ class GenerateSceneImagesUseCase:
         self._image_editor = image_editor
         self._logger = get_logger(__name__)
 
-    def execute(self, scenes_dir: Path, force: bool = False) -> tuple[Path, ...]:
+    def execute(
+        self, scenes_dir: Path, force: bool = False, only_files: tuple[Path, ...] | None = None,
+    ) -> tuple[Path, ...]:
         """各シーンを番号順に画像化し、sceneNN_MM.png（MM=シーン内の通し番号）を保存する。
 
         force=Trueの場合、既存の画像ファイルの有無を無視してすべて生成し直す。
+        only_filesを指定した場合、計画上のsceneNN_MM.pngのうち該当するファイルのみを対象にし、
+        既存ファイルの有無に関わらず常にそれらだけを生成し直す（他の画像には触れない）。
+        全件を対象にすると時間がかかるため、一部の画像だけ作り直したい場合に使う。
         """
         plan = self.build_plan(
             scenes_dir, self._min_display_seconds, self._max_display_seconds,
             self._characters_per_second, self._max_images,
         )
 
-        total = len(plan)
-        # 中断されたジョブの再試行等で一部の画像が既に生成済みの場合、同名ファイルが既に
-        # あれば生成済みとみなして再生成しない（無駄なAPI課金・GPU処理の防止）。
-        # force=Trueの場合はこの判定を無視し、常に全件生成し直す。
-        pending = list(plan) if force else [entry for entry in plan if not entry[1].exists()]
-        skipped = total - len(pending)
-        if skipped:
-            self._logger.info("生成済みの画像 %d/%d 件をスキップします。", skipped, total)
+        if only_files is not None:
+            requested = {image_file.resolve() for image_file in only_files}
+            plan_files = {image_file.resolve() for _, image_file in plan}
+            missing = requested - plan_files
+            if missing:
+                raise ValueError(
+                    "指定された画像はシーン計画に含まれていません: "
+                    + ", ".join(str(image_file) for image_file in sorted(missing))
+                )
+            pending = [entry for entry in plan if entry[1].resolve() in requested]
+            skipped = 0
+            total = len(pending)
+            image_files: list[Path] = [image_file for _, image_file in pending]
+        else:
+            total = len(plan)
+            # 中断されたジョブの再試行等で一部の画像が既に生成済みの場合、同名ファイルが既に
+            # あれば生成済みとみなして再生成しない（無駄なAPI課金・GPU処理の防止）。
+            # force=Trueの場合はこの判定を無視し、常に全件生成し直す。
+            pending = list(plan) if force else [entry for entry in plan if not entry[1].exists()]
+            skipped = total - len(pending)
+            if skipped:
+                self._logger.info("生成済みの画像 %d/%d 件をスキップします。", skipped, total)
+            image_files = [image_file for _, image_file in plan]
+
         prompt_sources = self._describe_scenes(tuple(pending))
-        image_files: list[Path] = [image_file for _, image_file in plan]
         for progress, ((window, image_file), prompt_source) in enumerate(
             zip(pending, prompt_sources), 1,
         ):

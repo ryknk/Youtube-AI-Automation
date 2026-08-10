@@ -450,7 +450,7 @@ ending:
   # エンディング映像の末尾に追加する無音の余白（秒）
   end_padding_seconds: 1.0
   max_reference_text_chars: 10000
-  image_mode: sequence
+  image_mode: first
 
 # ジョブキューの設定
 queue:

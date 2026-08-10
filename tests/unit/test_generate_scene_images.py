@@ -282,6 +282,40 @@ class GenerateSceneImagesUseCaseTests(unittest.TestCase):
             self.assertEqual(len(generator.prompts), 2)
             self.assertEqual((scenes_dir / "scene01_01.png").read_bytes(), b"fake-png")
 
+    def test_execute_with_only_files_regenerates_just_the_requested_image(self) -> None:
+        """--generate-imagesへ個別ファイル指定した場合、既存でも指定分だけ常に生成し直す。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            (scenes_dir / "scene02.txt").write_text("2番目の場面", encoding="utf-8")
+            (scenes_dir / "scene01_01.png").write_bytes(b"already-generated")
+            (scenes_dir / "scene02_01.png").write_bytes(b"already-generated")
+            generator = MockImageProvider()
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), generator,
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+            )
+
+            image_files = use_case.execute(scenes_dir, only_files=(scenes_dir / "scene02_01.png",))
+
+            self.assertEqual([file.name for file in image_files], ["scene02_01.png"])
+            self.assertEqual(len(generator.prompts), 1)
+            self.assertIn("2番目の場面", generator.prompts[0])
+            self.assertEqual((scenes_dir / "scene01_01.png").read_bytes(), b"already-generated")
+            self.assertEqual((scenes_dir / "scene02_01.png").read_bytes(), b"fake-png")
+
+    def test_execute_with_only_files_rejects_file_not_in_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scenes_dir = Path(temporary_directory)
+            (scenes_dir / "scene01.txt").write_text("1番目の場面", encoding="utf-8")
+            use_case = GenerateSceneImagesUseCase(
+                ImagePromptBuilder("clean 2D digital illustration, non-photorealistic"), MockImageProvider(),
+                min_display_seconds=5.0, max_display_seconds=10.0, characters_per_second=6.0,
+            )
+
+            with self.assertRaises(ValueError):
+                use_case.execute(scenes_dir, only_files=(scenes_dir / "scene99_01.png",))
+
     def test_execute_does_not_call_scene_visual_describer_for_already_generated_images(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             scenes_dir = Path(temporary_directory)

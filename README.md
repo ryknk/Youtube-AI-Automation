@@ -293,6 +293,14 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 個別ファイル指定時は、フォルダ横断で選んだ画像を指定できるようフォルダ単位のキャッシュ（`--generate-images`が書き出す生成キャッシュキー）とは紐付けません。編集設定（`image.scene_edit`・`image.qwen_image_edit_nunchaku_local`）が変わっていなければ、同じファイルを指定しても既に編集済みの画像は再編集されません（二重編集による画質劣化を避けるため）。無視して再編集したい場合は`--force`を付けてください。また、個別ファイル指定時はユーザーが明示的に編集を要求しているとみなし、`image.scene_edit.enabled`が`false`でも編集を実行します（フォルダ一括モードのみ`enabled`に従いスキップします）。
 
+`--generate-images`も同様にフォルダを1つ指定すると従来どおりフォルダ内`scene*.txt`から計画した`sceneNN_MM.png`のうち未生成分のみを対象にしますが、特定の画像だけ作り直したい場合は、対象の画像ファイル（`sceneNN_MM.png`）を直接複数指定できます。
+
+```powershell
+.\run.cmd --generate-images "$workDir\scene03_02.png" "$workDir\scene05_01.png" --template science
+```
+
+個別ファイル指定時は、指定したファイルが既に存在していても常に生成し直します（既存有無を見るフォルダ一括モードの挙動とは異なります）。`--edit-images`の個別ファイル指定と同様、フォルダ単位のバッチキャッシュ（`image_cache_key`）とは紐付けず、対象は指定した画像のみです（指定していない他の画像には触れません）。同じフォルダ内の画像のみ同時指定できます。
+
 台本、シーン分割、音声、画像、メタデータ、サムネイルの生成では外部API利用料が発生します。字幕生成と動画レンダリングはローカルのFFmpegを使用します。
 
 既存の台本文だけをAPIなしで品質チェックする場合は、次のように実行します。
