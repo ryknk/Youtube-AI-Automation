@@ -20,6 +20,9 @@ from youtube_generator.domain.quality import (
 )
 from youtube_generator.services.image_prompt_builder import ImagePromptBuilder
 
+# scene01_01.prompt.txt など画像個別指定用のプロンプトファイルは対象外とする。
+SCENE_TEXT_PATTERN = re.compile(r"scene(\d{2})\.txt$", re.IGNORECASE)
+
 
 @dataclass(frozen=True, slots=True)
 class QualityRules:
@@ -93,7 +96,9 @@ class QualityChecker:
         script_file = project_dir / "script.txt"
         script = self._read_text(script_file)
         checks = self._check_script(script)
-        scene_files = tuple(sorted(project_dir.glob("scene*.txt")))
+        scene_files = tuple(sorted(
+            path for path in project_dir.glob("scene*.txt") if SCENE_TEXT_PATTERN.fullmatch(path.name)
+        ))
         checks.extend(self._check_scenes(scene_files))
         checks.extend(self._check_metadata(project_dir))
         checks.extend(self._check_prompts(scene_files, image_prompt_builder))
