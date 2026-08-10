@@ -56,6 +56,8 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
             (work_dir / "scene01.txt").write_text("シーン1", encoding="utf-8")
         elif command == "--generate-audio":
             (Path(arguments[1]) / "scene01.mp3").write_bytes(b"audio")
+        elif command == "--generate-scene-descriptions":
+            pass
         elif command == "--generate-images":
             (Path(arguments[1]) / "scene01.png").write_bytes(b"image")
             if on_line is not None:
@@ -98,8 +100,9 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
         self.assertTrue((self.job.output_dir / "thumbnail" / "thumbnail.png").is_file())
         self.assertEqual(stages, [
             JobStage.SCRIPT_GENERATION, JobStage.SCENE_SPLIT, JobStage.VOICE_GENERATION,
-            JobStage.IMAGE_GENERATION, JobStage.SUBTITLE_GENERATION, JobStage.QUALITY_CHECK,
-            JobStage.VIDEO_RENDER, JobStage.METADATA_GENERATION, JobStage.THUMBNAIL_GENERATION,
+            JobStage.SCENE_DESCRIPTION_GENERATION, JobStage.IMAGE_GENERATION, JobStage.SUBTITLE_GENERATION,
+            JobStage.QUALITY_CHECK, JobStage.VIDEO_RENDER, JobStage.METADATA_GENERATION,
+            JobStage.THUMBNAIL_GENERATION,
         ])
 
     def test_ignores_newer_script_txt_written_elsewhere_in_output(self) -> None:
@@ -140,11 +143,12 @@ class ExistingPipelineRunnerTests(unittest.TestCase):
 
         commands = [call[0] for call in self.calls]
         self.assertEqual(commands, [
-            "--theme", "--split-script", "--generate-audio", "--generate-images", "--edit-images",
+            "--theme", "--split-script", "--generate-audio", "--generate-scene-descriptions",
+            "--generate-images", "--edit-images",
             "--generate-subtitles", "--generate-video", "--generate-metadata", "--generate-thumbnail",
         ])
         self.assertEqual(self.calls[0], ("--theme", "宇宙の不思議", "--template", "default", "--run-id", "job-1"))
-        metadata_call = self.calls[7]
+        metadata_call = self.calls[8]
         self.assertIn("--topic", metadata_call)
         self.assertEqual(metadata_call[metadata_call.index("--topic") + 1], "宇宙の不思議")
 

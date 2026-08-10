@@ -49,6 +49,11 @@ class ExistingPipelineRunner:
         self._run("--generate-audio", str(work_dir), "--template", job.template)
         self._copy_matching(work_dir, "scene*.mp3", job.output_dir / "audio")
 
+        update_stage(JobStage.SCENE_DESCRIPTION_GENERATION)
+        # image.scene_description.enabled=falseの場合はGenerateSceneDescriptionsUseCase側が
+        # 何もせず即終了するため、ここでの分岐は不要（--generate-images参照）。
+        self._run("--generate-scene-descriptions", str(work_dir), "--template", job.template)
+
         update_stage(JobStage.IMAGE_GENERATION)
         # 生成用モデルと編集用モデルを同一プロセス内で交互にロードするとVRAM/システムメモリを
         # 圧迫し、無応答のままプロセスが強制終了することがあるため、別プロセスの実行に分離している。
