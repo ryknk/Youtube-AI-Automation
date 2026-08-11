@@ -457,7 +457,7 @@
 
 **課題**: 本編末尾の余白（`ending.gap_seconds`、末尾シーンの画像延長＋`apad`）は存在したが、本編冒頭に無音余白を作る設定がなかった。エンディングとの結合有無に関わらず本編単体で成立する設定のため、`ending:`セクションではなく`video:`セクションに置く必要があった。
 
-**決定**: `VideoRenderSettings`に`start_padding_seconds`（既定0秒）を追加し、`FfmpegVideoRenderer`で最初のシーンの最初の画像の表示秒数を延長、ナレーション音声には`adelay`で無音を挿入する（エンディングの`start_padding_seconds`実装と同じパターン）。字幕は`subtitles.srt`自体を書き換えず、レンダリング時にのみ全キューの開始・終了時刻を`start_padding_seconds`分後ろへずらした一時ファイル（既存の`.subtitles_gap.srt`、末尾延長と共用）を焼き込みに使う。1シーン1画像のみの動画では、冒頭延長（`start_padding_seconds`）と末尾延長（`gap_seconds`）が同じ画像に加算される。`cli/main.py`の`video_fingerprint`に`start_padding_seconds`を追加し、設定変更時は本編動画（`video.mp4`）以降のみ再生成されるようにした。
+**決定**: `VideoRenderSettings`に`start_padding_seconds`（既定0秒）を追加し、`FfmpegVideoRenderer`で最初のシーンの最初の画像の表示秒数を延長、ナレーション音声には`adelay`で無音を挿入する（エンディングの`start_padding_seconds`実装と同じパターン）。字幕は`subtitles.srt`自体を書き換えず、レンダリング時にのみ全キューの開始・終了時刻を`start_padding_seconds`分後ろへずらした一時ファイル（既存の`.subtitles_gap.srt`、末尾延長と共用）を焼き込みに使う。当初は全キューを一律シフトしていたが、それだと最初のキューの開始時刻も後ろへずれ、冒頭0秒〜`start_padding_seconds`の区間はどの字幕キューにも該当せず無表示になる不具合があった。既存の`gap_seconds`（末尾）が最後のキューの終了時刻だけを延長して余白区間も表示し続けるのと対称になるよう、最初のキューだけは開始時刻を0のまま据え置き、終了時刻のみ延長する方式に修正した。1シーン1画像のみの動画では、冒頭延長（`start_padding_seconds`）と末尾延長（`gap_seconds`）が同じ画像に加算される。`cli/main.py`の`video_fingerprint`に`start_padding_seconds`を追加し、設定変更時は本編動画（`video.mp4`）以降のみ再生成されるようにした。
 
 **理由**: 既存の`ending.start_padding_seconds`実装（画像延長＋`adelay`＋字幕タイミング調整）と対称のパターンを再利用し、変更範囲を最小限に抑えるため（CLAUDE.mdの大規模リファクタリング禁止方針に合致）。`subtitles.srt`本体を書き換えない設計は、既存の`gap_seconds`（末尾）実装が採用している「字幕生成キャッシュとレンダリング時オフセットを分離する」方針をそのまま踏襲したもの。
 

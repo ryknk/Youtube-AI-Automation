@@ -237,7 +237,7 @@ class GenerateVideoTests(unittest.TestCase):
         self.assertEqual(command[scene01_index - 2], "3.500")
         self.assertIn("adelay=delays=500:all=1,apad=pad_dur=1.000", filter_graph)
 
-    def test_shift_subtitle_cues_moves_all_cue_times_forward(self) -> None:
+    def test_shift_subtitle_cues_keeps_first_cue_start_at_zero_to_fill_leading_silence(self) -> None:
         srt_text = (
             "1\n00:00:00,000 --> 00:00:02,000\n最初の字幕\n\n"
             "2\n00:00:02,000 --> 00:00:05,000\n最後の字幕\n"
@@ -245,7 +245,8 @@ class GenerateVideoTests(unittest.TestCase):
 
         shifted = FfmpegVideoRenderer._shift_subtitle_cues(srt_text, 0.5)
 
-        self.assertIn("00:00:00,500 --> 00:00:02,500", shifted)
+        # 最初のキューは開始時刻0を据え置いたまま終了時刻だけ延長し、冒頭の無音区間も字幕を表示し続ける。
+        self.assertIn("00:00:00,000 --> 00:00:02,500", shifted)
         self.assertIn("00:00:02,500 --> 00:00:05,500", shifted)
 
     def test_render_shifts_and_extends_temporary_subtitle_file(self) -> None:
@@ -281,8 +282,9 @@ class GenerateVideoTests(unittest.TestCase):
                 renderer.render(scenes_dir, output_file)
 
             self.assertFalse(temp_subtitle_file.exists())
-            # 開始時刻がstart_padding_seconds(0.5秒)分後ろへずれ、終了時刻はさらにgap_seconds(1.0秒)延長される。
-            self.assertIn("00:00:00,500 --> 00:00:02,500", captured_temp_subtitle_text[0])
+            # 唯一のキューは最初かつ最後のため、開始時刻0を据え置いたまま
+            # 終了時刻だけstart_padding_seconds(0.5秒)+gap_seconds(1.0秒)分延長される。
+            self.assertIn("00:00:00,000 --> 00:00:02,500", captured_temp_subtitle_text[0])
 
     def test_fade_out_seconds_zero_adds_no_fade_filter(self) -> None:
         renderer = FfmpegVideoRenderer(

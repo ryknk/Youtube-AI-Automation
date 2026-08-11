@@ -331,14 +331,19 @@ class FfmpegVideoRenderer(VideoRenderer):
 
     @classmethod
     def _shift_subtitle_cues(cls, srt_text: str, offset_seconds: float) -> str:
-        """SRT本文の全キューの開始・終了時刻をoffset_seconds分だけ後ろへずらす。"""
+        """SRT本文の全キューの開始・終了時刻をoffset_seconds分だけ後ろへずらす。
+        ただし最初のキューだけは開始時刻を0のまま据え置き、冒頭の無音区間でも
+        字幕が表示され続けるようにする（末尾のgap区間で最後のキューを表示し続けるのと対称）。"""
         result: list[str] = []
         cursor = 0
-        for match in SRT_TIMING_PATTERN.finditer(srt_text):
+        for index, match in enumerate(SRT_TIMING_PATTERN.finditer(srt_text)):
             start_span = match.span(1)
             end_span = match.span(2)
             result.append(srt_text[cursor:start_span[0]])
-            result.append(cls._add_seconds_to_timestamp(match.group(1), offset_seconds))
+            if index == 0:
+                result.append(match.group(1))
+            else:
+                result.append(cls._add_seconds_to_timestamp(match.group(1), offset_seconds))
             result.append(srt_text[start_span[1]:end_span[0]])
             result.append(cls._add_seconds_to_timestamp(match.group(2), offset_seconds))
             cursor = end_span[1]
