@@ -45,6 +45,7 @@ logs/*
 # Local media assets
 /assets/
 /templates/**/assets/
+/templates/**/*_old*
 
 # Editor / OS
 .vscode/

@@ -9,7 +9,7 @@ video:
   # 動画の出力形式
   output_format: mp4
   # 本編映像の冒頭に追加する無音の余白（秒）。0で無効
-  start_padding_seconds: 0.0
+  start_padding_seconds: 0.3
 
 # 機能ごとに使用するプロバイダー
 providers:
@@ -20,7 +20,7 @@ providers:
   # 画像生成のプロバイダー
   image:
     scene: qwen_image_nunchaku_local
-    thumbnail: bfl
+    thumbnail: qwen_image_nunchaku_local
 
 # テキスト生成モデルの設定
 text:
