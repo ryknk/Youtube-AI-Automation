@@ -20,8 +20,13 @@ _IMAGE_PROGRESS_PATTERN = re.compile(r"画像(生成|編集): \(\d+/\d+\)")
 class ExistingPipelineRunner:
     """既存のCLIを再利用し、工程別成果物をジョブ出力へコピーする。"""
 
-    def __init__(self, skip_thumbnail: bool = False) -> None:
+    def __init__(self, skip_thumbnail: bool = False, force: bool = False) -> None:
         self._skip_thumbnail = skip_thumbnail
+        self._force = force
+
+    def _forced(self, *arguments: str) -> tuple[str, ...]:
+        """force指定時、main.py側のキャッシュ・既存ファイル無視オプションを各工程へ引き継ぐ。"""
+        return (*arguments, "--force") if self._force else arguments
 
     def __call__(
         self,
@@ -33,52 +38,52 @@ class ExistingPipelineRunner:
         work_dir.mkdir(exist_ok=True)
 
         update_stage(JobStage.SCRIPT_GENERATION)
-        self._run(
+        self._run(*self._forced(
             "--theme", job.theme, "--template", job.template,
             "--run-id", job.job_id,
-        )
+        ))
         script_file = self._script_output_dir(job) / "script.txt"
         self._copy(script_file, work_dir / "script.txt")
         self._copy(script_file, job.output_dir / "script" / "script.txt")
 
         update_stage(JobStage.SCENE_SPLIT)
-        self._run("--split-script", str(work_dir / "script.txt"), "--template", job.template)
+        self._run(*self._forced("--split-script", str(work_dir / "script.txt"), "--template", job.template))
         self._copy_matching(work_dir, "scene*.txt", job.output_dir / "script")
 
         update_stage(JobStage.VOICE_GENERATION)
-        self._run("--generate-audio", str(work_dir), "--template", job.template)
+        self._run(*self._forced("--generate-audio", str(work_dir), "--template", job.template))
         self._copy_matching(work_dir, "scene*.mp3", job.output_dir / "audio")
 
         update_stage(JobStage.SCENE_DESCRIPTION_GENERATION)
         # image.scene_description.enabled=falseの場合はGenerateSceneDescriptionsUseCase側が
         # 何もせず即終了するため、ここでの分岐は不要（--generate-images参照）。
-        self._run("--generate-scene-descriptions", str(work_dir), "--template", job.template)
+        self._run(*self._forced("--generate-scene-descriptions", str(work_dir), "--template", job.template))
 
         update_stage(JobStage.IMAGE_GENERATION)
         # 生成用モデルと編集用モデルを同一プロセス内で交互にロードするとVRAM/システムメモリを
         # 圧迫し、無応答のままプロセスが強制終了することがあるため、別プロセスの実行に分離している。
         self._run(
-            "--generate-images", str(work_dir), "--template", job.template,
+            *self._forced("--generate-images", str(work_dir), "--template", job.template),
             on_line=self._make_image_progress_handler(on_progress) if on_progress else None,
         )
         self._run(
-            "--edit-images", str(work_dir), "--template", job.template,
+            *self._forced("--edit-images", str(work_dir), "--template", job.template),
             on_line=self._make_image_progress_handler(on_progress) if on_progress else None,
         )
         self._copy_matching(work_dir, "scene*.png", job.output_dir / "images")
 
         update_stage(JobStage.SUBTITLE_GENERATION)
-        self._run("--generate-subtitles", str(work_dir), "--template", job.template)
+        self._run(*self._forced("--generate-subtitles", str(work_dir), "--template", job.template))
         self._copy(work_dir / "subtitles.srt", job.output_dir / "subtitle" / "subtitles.srt")
 
         update_stage(JobStage.QUALITY_CHECK)
         update_stage(JobStage.VIDEO_RENDER)
-        self._run("--generate-video", str(work_dir), "--template", job.template)
+        self._run(*self._forced("--generate-video", str(work_dir), "--template", job.template))
         self._copy(work_dir / "video.mp4", job.output_dir / "video" / "video.mp4")
         self._copy_matching(work_dir, "quality_report.*", job.output_dir / "quality_report")
 
         update_stage(JobStage.METADATA_GENERATION)
-        self._run(*self._metadata_arguments(job, work_dir))
+        self._run(*self._forced(*self._metadata_arguments(job, work_dir)))
         self._copy_matching(work_dir, "*.txt", job.output_dir / "metadata", exclude={"script.txt"})
 
         update_stage(JobStage.THUMBNAIL_GENERATION)

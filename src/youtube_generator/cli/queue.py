@@ -21,7 +21,11 @@ def run_queue(arguments: list[str]) -> None:
     import_command = subcommands.add_parser("import")
     import_command.add_argument("source", type=Path)
     subcommands.add_parser("list")
-    subcommands.add_parser("run")
+    run = subcommands.add_parser("run")
+    run.add_argument(
+        "--force", action="store_true",
+        help="キャッシュ・既存ファイルを無視し、全ジョブの全工程を強制的に再生成する",
+    )
     subcommands.add_parser("status")
     retry = subcommands.add_parser("retry")
     retry.add_argument("job_id")
@@ -94,6 +98,6 @@ def run_queue(arguments: list[str]) -> None:
                 update_stage(stage)
             def logged_progress(message):  # type: ignore[no-untyped-def]
                 logger.info("job_id=%s: %s", job.job_id, message)
-            ExistingPipelineRunner(skip_thumbnail=skip_thumbnail)(job, logged_update, logged_progress)
+            ExistingPipelineRunner(skip_thumbnail=skip_thumbnail, force=args.force)(job, logged_update, logged_progress)
             logger.info("job_id=%s: ジョブを完了しました。", job.job_id)
         manager.run_pending(processor, stop_on_error=bool(queue_settings["stop_on_error"]))

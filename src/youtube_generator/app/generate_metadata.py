@@ -66,12 +66,13 @@ class GenerateMetadataUseCase:
     def execute_cached(
         self, project_dir: Path, cache_manager: CacheManager | None, *,
         fingerprint: str, topic: str, template_id: str, template_name: str,
-        title_prompt: str | None, title_fingerprint: str = "",
+        title_prompt: str | None, title_fingerprint: str = "", force: bool = False,
     ) -> MetadataCacheResult:
         """タイトルとその他のメタデータを別々にキャッシュする。
 
         ``fingerprint``はタイトル・詳細情報の両方に影響する設定（textプロバイダー・モデル）、
         ``title_fingerprint``はタイトル生成のみに影響する設定（例: 生成候補数）を渡す。
+        ``force``指定時はキャッシュの有無を無視して常に再生成する。
         """
         prompt = title_prompt or ""
         prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
@@ -83,8 +84,8 @@ class GenerateMetadataUseCase:
         details_key = CacheManager.make_file_key(
             "metadata_details", (script_file,), fingerprint,
         )
-        titles_hit = cache_manager is not None and cache_manager.exists(titles_key, "metadata_titles")
-        details_hit = cache_manager is not None and cache_manager.exists(details_key, "metadata_details")
+        titles_hit = not force and cache_manager is not None and cache_manager.exists(titles_key, "metadata_titles")
+        details_hit = not force and cache_manager is not None and cache_manager.exists(details_key, "metadata_details")
 
         if cache_manager is None or (not titles_hit and not details_hit):
             files = self.execute(

@@ -150,8 +150,9 @@ def create_parser() -> argparse.ArgumentParser:
         "--force", action="store_true",
         help=(
             "キャッシュ・既存ファイルを無視して強制的に再生成します"
-            "（--generate-video/--generate-scene-descriptions/--generate-images/"
-            "--edit-imagesで使用）。"
+            "（--theme/--split-script/--generate-audio/--generate-subtitles/"
+            "--generate-video/--generate-scene-descriptions/--generate-images/"
+            "--edit-images/--generate-metadataで使用）。"
         ),
     )
     parser.add_argument("--version", action="version", version="Youtube AI Automation 0.1.0")
@@ -304,7 +305,7 @@ def run() -> None:
                 args.generate_metadata, cache_manager,
                 fingerprint=metadata_fingerprint, title_fingerprint=title_fingerprint, topic=topic,
                 template_id=template.template_id, template_name=template.display_name,
-                title_prompt=title_prompt,
+                title_prompt=title_prompt, force=args.force,
             )
             logger.info(
                 "タイトルキャッシュキー: %s (title_prompt_hash=%s)",
@@ -503,7 +504,7 @@ def run() -> None:
             subtitle_cache_key = CacheManager.make_file_key(
                 "subtitle", subtitle_inputs, subtitle_fingerprint,
             )
-            if cache_manager is not None and cache_manager.exists(subtitle_cache_key, "subtitle"):
+            if not args.force and cache_manager is not None and cache_manager.exists(subtitle_cache_key, "subtitle"):
                 subtitle_file = cache_manager.restore_files(
                     subtitle_cache_key, "subtitle", args.generate_subtitles
                 )[0]
@@ -548,7 +549,7 @@ def run() -> None:
                 json.dumps(scene_settings, ensure_ascii=False, sort_keys=True),
             )
             scene_cache_key = CacheManager.make_file_key("scene", (args.split_script,), scene_fingerprint)
-            if cache_manager is not None and cache_manager.exists(scene_cache_key, "scene"):
+            if not args.force and cache_manager is not None and cache_manager.exists(scene_cache_key, "scene"):
                 scene_files = cache_manager.restore_files(scene_cache_key, "scene", args.split_script.parent)
                 logger.info("シーンをキャッシュから復元しました。")
                 history.record(run_id, "cache_hit", artifact="scene", cache_key=scene_cache_key)
@@ -595,7 +596,7 @@ def run() -> None:
             audio_cache_key = CacheManager.make_file_key(
                 "voice", audio_inputs, audio_fingerprint,
             )
-            if cache_manager is not None and cache_manager.exists(audio_cache_key, "voice"):
+            if not args.force and cache_manager is not None and cache_manager.exists(audio_cache_key, "voice"):
                 audio_files = cache_manager.restore_files(audio_cache_key, "voice", args.generate_audio)
                 logger.info("音声をキャッシュから復元しました。")
                 history.record(run_id, "cache_hit", artifact="voice", cache_key=audio_cache_key)
@@ -623,7 +624,7 @@ def run() -> None:
                 alignment_cache_key = CacheManager.make_file_key(
                     "alignment", audio_files + scene_text_files, alignment_fingerprint,
                 )
-                if cache_manager is not None and cache_manager.exists(alignment_cache_key, "alignment"):
+                if not args.force and cache_manager is not None and cache_manager.exists(alignment_cache_key, "alignment"):
                     cache_manager.restore_files(alignment_cache_key, "alignment", args.generate_audio)
                     logger.info("アライメント結果をキャッシュから復元しました。")
                     history.record(run_id, "cache_hit", artifact="alignment", cache_key=alignment_cache_key)
@@ -946,7 +947,7 @@ def run() -> None:
             script_output_dir = GenerateScriptUseCase.output_directory(
                 settings.output_dir, args.theme, template, run_id
             )
-            if cache_manager is not None and cache_manager.exists(script_cache_key, "script"):
+            if not args.force and cache_manager is not None and cache_manager.exists(script_cache_key, "script"):
                 script_file = cache_manager.restore_files(script_cache_key, "script", script_output_dir)[0]
                 logger.info("台本をキャッシュから復元しました。")
                 history.record(run_id, "cache_hit", artifact="script", cache_key=script_cache_key)

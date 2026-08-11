@@ -246,6 +246,12 @@ CSVは`theme,template`ヘッダー、JSONは`theme`と`template`を持つオブ�
 
 `config/config.yaml`の`queue.skip_thumbnail`を`true`にすると、キュー実行時のサムネイル生成工程（API呼び出し・成果物コピー）をスキップできます。画像生成中は`画像生成: (n/総数)`という進捗がジョブごとにログ出力されます。
 
+`queue run --force`を付けると、キュー内の対象ジョブすべての各工程（台本・シーン分割・音声・場面説明・画像生成・画像編集・字幕・動画・メタデータ）でキャッシュ・既存ファイルを無視し、常に再生成します（サムネイルはもともと毎回再生成されるため対象外）。台本や音声、画像生成はAPI課金・GPU処理が発生するため、キュー内の全ジョブに対して意図せず課金しないよう注意してください。
+
+```powershell
+.\run.cmd queue run --force
+```
+
 PowerShellを閉じるなどで`queue run`のプロセスが強制終了された場合、該当ジョブは`RUNNING`のまま残りますが、次にいずれかの`queue`コマンド（`list`/`retry`/`cancel`/`delete`/`run`等）を実行した時点で自動的に`PENDING`へ戻され、`retry`/`cancel`/`delete`が行えるようになります。別ターミナルで実際に`queue run`が稼働中のジョブは、そのプロセスが生存している限り誤って巻き戻されることはありません。
 
 ## キューを使わずに1件実行する
@@ -256,7 +262,13 @@ PowerShellを閉じるなどで`queue run`のプロセスが強制終了され�
 .\run.cmd --theme "宇宙の不思議" --template science
 ```
 
-生成された台本は`output/<ジャンル名>/<実行ID>_<入力テーマ>/script.txt`へ保存されます。直前に作成されたフォルダをPowerShell変数へ設定し、残りの工程を実行します。
+生成された台本は`output/<ジャンル名>/<実行ID>_<入力テーマ>/script.txt`へ保存されます。同じテーマ・テンプレート・text設定で実行するとキャッシュから復元されるため、キャッシュを無視して台本を作り直したい場合は`--force`を付けてください。
+
+```powershell
+.\run.cmd --theme "宇宙の不思議" --template science --force
+```
+
+直前に作成されたフォルダをPowerShell変数へ設定し、残りの工程を実行します。
 
 ```powershell
 $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName + "\.work"
@@ -273,6 +285,8 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 ```
 
 `--template`には台本生成時と同じIDを指定してください。テンプレートが異なると、画像・タイトル・サムネイルの生成方針も変わります。メタデータ生成では、タイトル生成に動画テーマを反映するため`--topic`も指定してください。ジョブ実行時はジョブのテーマが自動的に渡されます。`--theme`、`--split-script`、各`--generate-*`・`--edit-images`は同時指定できないため、工程ごとに個別実行します。
+
+`--force`は`--theme`（台本）・`--split-script`（シーン分割）・`--generate-audio`（音声・アライメント）・`--generate-scene-descriptions`（場面説明）・`--generate-images`・`--edit-images`・`--generate-subtitles`（字幕）・`--generate-video`（動画）・`--generate-metadata`のいずれでも使用でき、その工程のキャッシュ・既存ファイルを無視して再生成します。`--generate-thumbnail`はもともとキャッシュを持たず毎回生成するため対象外です。台本を`--force`で作り直すと内容が変わる可能性があるため、後続工程（シーン分割・音声・字幕・動画・メタデータ）のキャッシュキーは生成物ファイルの内容ハッシュを含む設計上、台本内容が変われば自動的に再生成され、`--force`を明示しなくても不整合は生じません。
 
 `--generate-scene-descriptions`は、[後述の`scene_description`](#シーン画像プロンプト用の場面説明生成scene_description)が有効な場合に、画像プロンプト用の場面説明（`sceneNN_MM.description.txt`）だけを独立して生成する任意の工程です。省略しても`--generate-images`実行時に内部で同様の呼び出しが行われるため、キューを使わずに1件実行する場合も必須ではありません。画像生成側の設定だけを変更して`--generate-images`をやり直したい場合や、場面説明だけを`--force`で再生成したい場合に、この工程を独立して呼び出せます。
 
