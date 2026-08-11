@@ -453,6 +453,18 @@
 
 ---
 
+## 本編映像冒頭の無音余白（`video.start_padding_seconds`）を、既存のエンディング`start_padding_seconds`と同じ方式で本編側にも追加した
+
+**課題**: 本編末尾の余白（`ending.gap_seconds`、末尾シーンの画像延長＋`apad`）は存在したが、本編冒頭に無音余白を作る設定がなかった。エンディングとの結合有無に関わらず本編単体で成立する設定のため、`ending:`セクションではなく`video:`セクションに置く必要があった。
+
+**決定**: `VideoRenderSettings`に`start_padding_seconds`（既定0秒）を追加し、`FfmpegVideoRenderer`で最初のシーンの最初の画像の表示秒数を延長、ナレーション音声には`adelay`で無音を挿入する（エンディングの`start_padding_seconds`実装と同じパターン）。字幕は`subtitles.srt`自体を書き換えず、レンダリング時にのみ全キューの開始・終了時刻を`start_padding_seconds`分後ろへずらした一時ファイル（既存の`.subtitles_gap.srt`、末尾延長と共用）を焼き込みに使う。1シーン1画像のみの動画では、冒頭延長（`start_padding_seconds`）と末尾延長（`gap_seconds`）が同じ画像に加算される。`cli/main.py`の`video_fingerprint`に`start_padding_seconds`を追加し、設定変更時は本編動画（`video.mp4`）以降のみ再生成されるようにした。
+
+**理由**: 既存の`ending.start_padding_seconds`実装（画像延長＋`adelay`＋字幕タイミング調整）と対称のパターンを再利用し、変更範囲を最小限に抑えるため（CLAUDE.mdの大規模リファクタリング禁止方針に合致）。`subtitles.srt`本体を書き換えない設計は、既存の`gap_seconds`（末尾）実装が採用している「字幕生成キャッシュとレンダリング時オフセットを分離する」方針をそのまま踏襲したもの。
+
+**参照**: [ffmpeg_video_renderer.py](src/youtube_generator/infrastructure/ffmpeg_video_renderer.py)、[cli/main.py](src/youtube_generator/cli/main.py)、README「同じ入力と設定で生成した中間成果物は...」節。
+
+---
+
 ## シーン画像プロンプトの品質対策を、共通ImagePromptBuilder（抽象的な指示）とプロバイダー別negative_prompt（具体的な抑制語）に役割分担した
 
 **課題**: 生成画像で(1)実在企業のロゴ・商標が写り込む、(2)屋内・屋外など複数の場所が1枚の画像に混在する、という2つの問題が確認された。対策として`ImagePromptBuilder`（ポジティブプロンプト）に具体的な抑制文言を追加する案を試したが、屋内外混在対策では「indoor office interior」「outdoor street scene」のような具体的な名詞を例示すると、かえってモデルがその構図（対比構図）へ誘導されやすいことが実機確認で判明した。

@@ -55,6 +55,7 @@ class VideoRenderSettings:
     bgm_fade_in: float = 0.0
     bgm_fade_out: float = 0.0
     gap_seconds: float = 0.0
+    start_padding_seconds: float = 0.0
     fade_out_seconds: float = 0.0
     fade_in_seconds: float = 0.0
     subtitle_font: str = "Arial"
@@ -111,16 +112,19 @@ class FfmpegVideoRenderer(VideoRenderer):
             raise FileNotFoundError(f"BGMファイルが見つかりません: {self._settings.bgm_file}")
 
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        # 延長区間でも直前の字幕を表示し続けるため、焼き込み用にのみ末尾字幕の終了時刻を延長する
+        # 冒頭の無音余白・末尾の延長区間でも字幕タイミングが映像とずれないよう、焼き込み用にのみ
+        # 開始時刻の後ろ倒し・末尾字幕の終了時刻延長を行う
         # （scenes_dir直下のsubtitles.srt自体は元の音声長のまま維持する）。
         render_subtitle_file = subtitle_file
         temporary_subtitle_file: Path | None = None
-        if self._settings.gap_seconds > 0:
+        if self._settings.gap_seconds > 0 or self._settings.start_padding_seconds > 0:
+            text = subtitle_file.read_text(encoding="utf-8")
+            if self._settings.start_padding_seconds > 0:
+                text = self._shift_subtitle_cues(text, self._settings.start_padding_seconds)
+            if self._settings.gap_seconds > 0:
+                text = self._extend_last_subtitle_cue(text, self._settings.gap_seconds)
             temporary_subtitle_file = scenes_dir / ".subtitles_gap.srt"
-            temporary_subtitle_file.write_text(
-                self._extend_last_subtitle_cue(subtitle_file.read_text(encoding="utf-8"), self._settings.gap_seconds),
-                encoding="utf-8",
-            )
+            temporary_subtitle_file.write_text(text, encoding="utf-8")
             render_subtitle_file = temporary_subtitle_file
         try:
             command = self.build_command(scenes, render_subtitle_file, output_file)
@@ -143,17 +147,21 @@ class FfmpegVideoRenderer(VideoRenderer):
             raise ValueError("レンダリング対象のシーンがありません。")
 
         gap_seconds = self._settings.gap_seconds
+        start_padding_seconds = self._settings.start_padding_seconds
         command = [self._executable, "-y"]
         input_layout: list[tuple[tuple[int, ...], int]] = []
         input_index = 0
         for scene_index, scene in enumerate(scenes):
+            is_first_scene = scene_index == 0
             is_last_scene = scene_index == len(scenes) - 1
             last_image_position = len(scene.images) - 1
             image_inputs: list[int] = []
             for image_position, image in enumerate(scene.images):
                 # 最後のシーンの最後の画像だけナレーション終了後も延長し、エンディングとの区切りを明確にする。
+                # 最初のシーンの最初の画像は冒頭の無音余白分だけ延長する。
                 # ズームが同じzoompanフィルター内で継続するよう、別セグメントではなく画像の表示秒数自体を延ばす。
                 extended = gap_seconds if is_last_scene and image_position == last_image_position else 0.0
+                extended += start_padding_seconds if is_first_scene and image_position == 0 else 0.0
                 # image2's default is 25 fps.  Keep its input clock aligned with
                 # zoompan/output fps so the final scene is not shortened.
                 command.extend([
@@ -192,6 +200,7 @@ class FfmpegVideoRenderer(VideoRenderer):
         filters: list[str] = []
         concat_inputs: list[str] = []
         gap_seconds = self._settings.gap_seconds
+        start_padding_seconds = self._settings.start_padding_seconds
         effect_index = 0
         for scene_index, (scene, (image_inputs, audio_input)) in enumerate(zip(scenes, input_layout)):
             video_label = f"v{scene_index}"
@@ -210,9 +219,15 @@ class FfmpegVideoRenderer(VideoRenderer):
                     effect_index += 1
                     sub_labels.append(f"[{sub_label}]")
                 filters.append(f"{''.join(sub_labels)}concat=n={len(image_inputs)}:v=1:a=0[{video_label}]")
+            audio_filters: list[str] = []
+            if scene_index == 0 and start_padding_seconds > 0:
+                # 延長した先頭画像の表示秒数に合わせ、ナレーション開始前を無音でdelayする。
+                audio_filters.append(f"adelay=delays={round(start_padding_seconds * 1000)}:all=1")
             if scene_index == len(scenes) - 1 and gap_seconds > 0:
-                # 延長した画像の表示秒数に合わせ、ナレーション終了後を無音でpadする。
-                filters.append(f"[{audio_input}:a]apad=pad_dur={gap_seconds:.3f}[a{scene_index}]")
+                # 延長した末尾画像の表示秒数に合わせ、ナレーション終了後を無音でpadする。
+                audio_filters.append(f"apad=pad_dur={gap_seconds:.3f}")
+            if audio_filters:
+                filters.append(f"[{audio_input}:a]{','.join(audio_filters)}[a{scene_index}]")
                 concat_inputs.extend([f"[{video_label}]", f"[a{scene_index}]"])
             else:
                 concat_inputs.extend([f"[{video_label}]", f"[{audio_input}:a]"])
@@ -230,7 +245,7 @@ class FfmpegVideoRenderer(VideoRenderer):
             background_color=self._settings.subtitle_background_color,
             background_opacity=self._settings.subtitle_background_opacity,
         )
-        total_duration = sum(scene.duration_seconds for scene in scenes) + gap_seconds
+        total_duration = sum(scene.duration_seconds for scene in scenes) + gap_seconds + start_padding_seconds
         subtitled_label = "video" if self._settings.fade_out_seconds <= 0 else "video_subtitled"
         filters.append(
             f"[concatenated_video]subtitles=filename='{subtitle_path}':charenc=UTF-8:"
@@ -313,6 +328,22 @@ class FfmpegVideoRenderer(VideoRenderer):
     def _escape_filter_path(path: Path) -> str:
         """FFmpegフィルター内で使用できるWindowsパスへ変換する。"""
         return str(path.resolve()).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+
+    @classmethod
+    def _shift_subtitle_cues(cls, srt_text: str, offset_seconds: float) -> str:
+        """SRT本文の全キューの開始・終了時刻をoffset_seconds分だけ後ろへずらす。"""
+        result: list[str] = []
+        cursor = 0
+        for match in SRT_TIMING_PATTERN.finditer(srt_text):
+            start_span = match.span(1)
+            end_span = match.span(2)
+            result.append(srt_text[cursor:start_span[0]])
+            result.append(cls._add_seconds_to_timestamp(match.group(1), offset_seconds))
+            result.append(srt_text[start_span[1]:end_span[0]])
+            result.append(cls._add_seconds_to_timestamp(match.group(2), offset_seconds))
+            cursor = end_span[1]
+        result.append(srt_text[cursor:])
+        return "".join(result)
 
     @classmethod
     def _extend_last_subtitle_cue(cls, srt_text: str, extra_seconds: float) -> str:

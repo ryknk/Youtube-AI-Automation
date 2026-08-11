@@ -8,6 +8,8 @@ video:
   fps: 30
   # 動画の出力形式
   output_format: mp4
+  # 本編映像の冒頭に追加する無音の余白（秒）。0で無効
+  start_padding_seconds: 0.0
 
 # 機能ごとに使用するプロバイダー
 providers:
@@ -457,7 +459,7 @@ queue:
   # 1件の失敗時に後続ジョブの処理も停止するか
   stop_on_error: false
   # キュー実行時にサムネイル生成工程をスキップするか
-  skip_thumbnail: false
+  skip_thumbnail: true
 
 # YouTubeアップロードの設定
 youtube:

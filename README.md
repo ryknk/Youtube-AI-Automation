@@ -327,6 +327,8 @@ $workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -
 
 同じ入力と設定で生成した中間成果物は`cache/`から再利用されます。`--generate-video`も、シーン画像・音声・字幕（SRT）・BGM・動画設定が変わっていなければ動画（`video.mp4`）をキャッシュから復元し、ffmpegによる再レンダリングを省略します。キャッシュを無視して強制的に再レンダリングしたい場合は`--force`を付けて実行してください。
 
+`config/config.yaml`の`video.start_padding_seconds`（既定0秒）は、本編映像の冒頭に追加する無音の余白です。指定した秒数だけナレーション音声の開始を遅らせ、最初のシーンの最初の画像もその秒数だけ表示を延長します（BGMが有効な場合はこの区間も含めて再生されます）。字幕の焼き込みタイミングも同じ秒数だけ後ろへずらされ、ずれは発生しません（`subtitles.srt`自体は変更しません）。`0`で無効です。変更すると本編動画（`video.mp4`）以降が再生成されます。
+
 ```powershell
 .\run.cmd --generate-video "$workDir" --template science --force
 ```

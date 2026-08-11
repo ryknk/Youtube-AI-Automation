@@ -190,6 +190,100 @@ class GenerateVideoTests(unittest.TestCase):
             self.assertIn("00:00:02,000", captured_temp_subtitle_text[0])
             self.assertNotIn("00:00:01,000", captured_temp_subtitle_text[0])
 
+    def test_start_padding_seconds_extends_first_scene_image_and_delays_narration(self) -> None:
+        renderer = FfmpegVideoRenderer(
+            duration_provider=FakeDurationProvider(),
+            settings=VideoRenderSettings(1920, 1080, 30, True, Path("assets/bgm.mp3"), 0.15, start_padding_seconds=0.5),
+        )
+        scenes = (_single_image_scene(1, 2.0), _single_image_scene(2, 3.0))
+
+        command = renderer.build_command(scenes, Path("subtitles.srt"), Path("video.mp4"))
+        filter_graph = command[command.index("-filter_complex") + 1]
+
+        # 最初のシーン(scene01_01.png)は同じ入力のまま表示秒数だけ延長され、zoompanフィルターも1つしか生成されない。
+        self.assertEqual(command.count("scene01_01.png"), 1)
+        scene01_index = command.index("scene01_01.png")
+        self.assertEqual(command[scene01_index - 2], "2.500")
+        # ナレーション開始前は無音でdelayされる。
+        self.assertIn("adelay=delays=500:all=1", filter_graph)
+        # BGMのatrim対象秒数にも冒頭余白分(2.0+3.0+0.5=5.5秒)が反映される。
+        self.assertIn("atrim=duration=5.500", filter_graph)
+
+    def test_start_padding_seconds_zero_adds_no_delay_filter(self) -> None:
+        renderer = FfmpegVideoRenderer(
+            duration_provider=FakeDurationProvider(),
+            settings=VideoRenderSettings(1920, 1080, 30, False, Path("unused.mp3"), 0.0),
+        )
+        scenes = (_single_image_scene(1, 2.0), _single_image_scene(2, 3.0))
+
+        command = renderer.build_command(scenes, Path("subtitles.srt"), Path("video.mp4"))
+        filter_graph = command[command.index("-filter_complex") + 1]
+
+        self.assertNotIn("adelay", filter_graph)
+
+    def test_single_scene_combines_start_padding_and_gap_on_same_image(self) -> None:
+        renderer = FfmpegVideoRenderer(
+            duration_provider=FakeDurationProvider(),
+            settings=VideoRenderSettings(
+                1920, 1080, 30, False, Path("unused.mp3"), 0.0, gap_seconds=1.0, start_padding_seconds=0.5,
+            ),
+        )
+        scenes = (_single_image_scene(1, 2.0),)
+
+        command = renderer.build_command(scenes, Path("subtitles.srt"), Path("video.mp4"))
+        filter_graph = command[command.index("-filter_complex") + 1]
+
+        scene01_index = command.index("scene01_01.png")
+        self.assertEqual(command[scene01_index - 2], "3.500")
+        self.assertIn("adelay=delays=500:all=1,apad=pad_dur=1.000", filter_graph)
+
+    def test_shift_subtitle_cues_moves_all_cue_times_forward(self) -> None:
+        srt_text = (
+            "1\n00:00:00,000 --> 00:00:02,000\n最初の字幕\n\n"
+            "2\n00:00:02,000 --> 00:00:05,000\n最後の字幕\n"
+        )
+
+        shifted = FfmpegVideoRenderer._shift_subtitle_cues(srt_text, 0.5)
+
+        self.assertIn("00:00:00,500 --> 00:00:02,500", shifted)
+        self.assertIn("00:00:02,500 --> 00:00:05,500", shifted)
+
+    def test_render_shifts_and_extends_temporary_subtitle_file(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as raw_dir:
+            scenes_dir = Path(raw_dir)
+            (scenes_dir / "scene01_01.png").write_bytes(b"img")
+            (scenes_dir / "scene01.mp3").write_bytes(b"audio")
+            (scenes_dir / "subtitles.srt").write_text(
+                "1\n00:00:00,000 --> 00:00:01,000\n字幕\n", encoding="utf-8",
+            )
+            renderer = FfmpegVideoRenderer(
+                duration_provider=FakeDurationProvider(),
+                settings=VideoRenderSettings(
+                    1920, 1080, 30, False, Path("unused.mp3"), 0.0, gap_seconds=1.0, start_padding_seconds=0.5,
+                ),
+            )
+            output_file = scenes_dir / "video.mp4"
+            captured_temp_subtitle_text: list[str] = []
+            temp_subtitle_file = scenes_dir / ".subtitles_gap.srt"
+
+            def fake_run(command, **kwargs):  # type: ignore[no-untyped-def]
+                captured_temp_subtitle_text.append(temp_subtitle_file.read_text(encoding="utf-8"))
+                output_file.write_bytes(b"video")
+
+                class Result:
+                    returncode = 0
+
+                return Result()
+
+            with patch("youtube_generator.infrastructure.ffmpeg_video_renderer.subprocess.run", side_effect=fake_run):
+                renderer.render(scenes_dir, output_file)
+
+            self.assertFalse(temp_subtitle_file.exists())
+            # 開始時刻がstart_padding_seconds(0.5秒)分後ろへずれ、終了時刻はさらにgap_seconds(1.0秒)延長される。
+            self.assertIn("00:00:00,500 --> 00:00:02,500", captured_temp_subtitle_text[0])
+
     def test_fade_out_seconds_zero_adds_no_fade_filter(self) -> None:
         renderer = FfmpegVideoRenderer(
             duration_provider=FakeDurationProvider(),
