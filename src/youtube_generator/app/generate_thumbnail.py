@@ -27,6 +27,12 @@ class GenerateThumbnailUseCase:
             "Style/medium: high-detail professional thumbnail artwork.\n"
             "Composition/framing: 16:9 landscape, one instantly recognizable focal subject, "
             "bold composition, strong contrast, clear at small display sizes.\n"
+            "Character depiction: when the scene depicts people, render each person with clearly "
+            "distinguishable gender-appropriate features (male: masculine build, facial structure, "
+            "and attire; female: feminine build, facial structure, and attire) matching the gender "
+            "implied by the narration, so male and female characters are visually unambiguous. This "
+            "video is for a Japanese audience, so depict every person with Japanese ethnicity facial "
+            "features, hairstyles, and attire appropriate to the scene.\n"
             "Constraints: no text, no subtitles, no logos, no watermark."
         )
         output_file = project_dir / "thumbnail.png"

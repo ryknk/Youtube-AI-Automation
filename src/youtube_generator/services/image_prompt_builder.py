@@ -51,8 +51,6 @@ class ImagePromptBuilder:
             "looking like duplicates.\n"
             "Character interaction: convey the characters' emotional state and relationship purely "
             "through facial expression, gaze, posture, and body language.\n"
-            "Product design: render any electronics, devices, or products shown as plain, generic, "
-            "unbranded designs.\n"
             "Constraints: widescreen landscape image filling the entire frame edge to edge, "
             "maintain the specified style consistently across all scenes."
         )
