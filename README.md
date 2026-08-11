@@ -259,7 +259,7 @@ PowerShellを閉じるなどで`queue run`のプロセスが強制終了され�
 生成された台本は`output/<ジャンル名>/<実行ID>_<入力テーマ>/script.txt`へ保存されます。直前に作成されたフォルダをPowerShell変数へ設定し、残りの工程を実行します。
 
 ```powershell
-$workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+$workDir = (Get-ChildItem output\科学 -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName + "\.work"
 
 .\run.cmd --split-script "$workDir\script.txt" --template science
 .\run.cmd --generate-audio "$workDir" --template science
