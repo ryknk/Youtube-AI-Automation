@@ -51,6 +51,9 @@ class ImagePromptBuilder:
             "looking like duplicates.\n"
             "Character interaction: convey the characters' emotional state and relationship purely "
             "through facial expression, gaze, posture, and body language.\n"
+            "Text/writing: whenever any surface would naturally display writing, render that content "
+            "as abstract, illegible marks or wavy lines that do not form real readable characters, "
+            "words, or numbers, rather than attempting to render actual text.\n"
             "Constraints: widescreen landscape image filling the entire frame edge to edge, "
             "maintain the specified style consistently across all scenes."
         )
