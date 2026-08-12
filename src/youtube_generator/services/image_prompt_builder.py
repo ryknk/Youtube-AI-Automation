@@ -32,7 +32,7 @@ class ImagePromptBuilder:
             "edge to edge.\n"
             f"Primary request: Visually depict the situation and mood of this Japanese narration "
             f"scene: {narration_text}\n"
-            f"Style/medium: {self._style}. Follow this template-specific medium and style exactly.\n"
+            f"Style/medium: {self._style} Follow this template-specific medium and style exactly.\n"
             "Composition/framing: polished widescreen composition, visually clear main subject, "
             "clear depth and balanced framing.\n"
             "Setting: when a physical location is shown, keep it structurally coherent. If indoors, "

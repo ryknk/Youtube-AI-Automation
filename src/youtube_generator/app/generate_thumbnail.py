@@ -23,8 +23,8 @@ class GenerateThumbnailUseCase:
         prompt = (
             "Use case: YouTube thumbnail.\n"
             f"Primary request: Create a compelling visual that summarizes this Japanese video script: {script[:2000]}\n"
-            f"Template-specific direction: {self._thumbnail_instruction}\n"
-            "Style/medium: high-detail professional thumbnail artwork.\n"
+            f"Style/medium: {self._thumbnail_instruction} Follow this template-specific medium and "
+            "style exactly.\n"
             "Composition/framing: 16:9 landscape, one instantly recognizable focal subject, "
             "bold composition, strong contrast, clear at small display sizes.\n"
             "Character depiction: when the scene depicts people, render each person with clearly "
