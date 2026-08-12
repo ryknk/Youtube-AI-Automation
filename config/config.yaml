@@ -99,20 +99,25 @@ image:
     height: null
     # 除去・編集内容を指示するプロンプト。既定値は字幕・キャプション帯の除去に加え、崩れた文字
     # （黒板・ホワイトボード・紙・看板等に描画された判読不能な文字）を、空白ではなく読み取れない
-    # 抽象的な線・走り書きへ描き直す指示にしている。
-    # 実測では、除去した領域が反転コピー（鏡写し）のようになる副作用が確認できた
-    # ため、それを避ける指示を含めている。必要に応じて調整すること。
+    # 抽象的な線・走り書きへ描き直す指示にしている。実測では、単に「abstract marks」とだけ
+    # 指示すると、元の文字・文章のレイアウト（行の区切り・間隔）を無視した密集した走り書きの
+    # 塊になる副作用が確認できたため、元のレイアウトを保ったまま各行を単純な線に置き換える
+    # よう明示している。
+    # また、除去した領域が反転コピー（鏡写し）のようになる副作用も確認できたため、
+    # それを避ける指示を含めている。必要に応じて調整すること。
     prompt: >-
       Remove the black caption bar and any text at the bottom of the image,
       naturally extending the existing floor, wall, table, or background so
       the removed area blends in, matching the surrounding lighting and
       perspective. Also find any garbled, illegible, or nonsensical text or
       writing anywhere else in the image (for example on a whiteboard,
-      screen, sign, paper, or book) and redraw it as abstract, illegible
-      marks or wavy lines that do not form real readable characters, words,
-      or numbers, matching the surrounding lighting and style. Do not mirror
-      or duplicate any other part of the image. Do not change anything else
-      in the image.
+      screen, sign, paper, or book) and redraw it as neat rows of simple,
+      illegible placeholder marks (short straight or gently wavy strokes,
+      like dashes), preserving the original text block's line layout and
+      spacing exactly, without forming real readable characters, words, or
+      numbers. Do not turn it into a dense chaotic scribble or tangle. Match
+      the surrounding lighting and style. Do not mirror or duplicate any
+      other part of the image. Do not change anything else in the image.
     # Qwen-Image-Edit系は空文字列だとエラーになるため半角スペースを既定値とする。
     negative_prompt: " "
     # 任意の参照画像パス。設定すると、編集対象画像に加えこの画像もQwenImageEditPlusPipeline
