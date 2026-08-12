@@ -21,12 +21,15 @@ class GenerateThumbnailUseCase:
             raise ValueError("サムネイル生成に使用する台本が空です。")
 
         prompt = (
-            "Use case: YouTube thumbnail.\n"
+            "Use case: a single YouTube thumbnail illustration rendered in the template's "
+            "specified art style, not a literal photograph.\n"
             f"Primary request: Create a compelling visual that summarizes this Japanese video script: {script[:2000]}\n"
             f"Style/medium: {self._thumbnail_instruction} Follow this template-specific medium and "
-            "style exactly.\n"
+            "style exactly, matching the visual style used for the video's scene artwork.\n"
             "Composition/framing: 16:9 landscape, one instantly recognizable focal subject, "
-            "bold composition, strong contrast, clear at small display sizes.\n"
+            "bold composition, strong contrast, clear at small display sizes, rendered in the "
+            "specified style/medium rather than photorealistic unless that style is itself "
+            "photorealistic.\n"
             "Character depiction: when the scene depicts people, render each person with clearly "
             "distinguishable gender-appropriate features (male: masculine build, facial structure, "
             "and attire; female: feminine build, facial structure, and attire) matching the gender "
