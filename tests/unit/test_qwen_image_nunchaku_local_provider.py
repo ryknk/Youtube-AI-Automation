@@ -172,13 +172,15 @@ class QwenImageNunchakuLocalSettingsTests(unittest.TestCase):
         self.assertEqual(settings.prompt_suffix, "")
         self.assertIsNone(settings.fallback_provider)
         self.assertTrue(settings.letterbox_detection_enabled)
+        self.assertIsNone(settings.thumbnail_negative_prompt)
 
     def test_from_mapping_reads_all_fields(self) -> None:
         settings = QwenImageNunchakuLocalSettings.from_mapping({
             "precision": "NVFP4", "rank": 128, "offload_threshold_gb": 24.0,
             "low_vram_use_pin_memory": True, "low_vram_num_blocks_on_gpu": 2,
             "num_inference_steps": 8, "true_cfg_scale": 2.0, "seed": 5,
-            "negative_prompt": "blurry", "prompt_suffix": "Ultra HD, 4K.", "fallback_provider": "BFL",
+            "negative_prompt": "blurry", "thumbnail_negative_prompt": "blurry, YouTube logo",
+            "prompt_suffix": "Ultra HD, 4K.", "fallback_provider": "BFL",
             "letterbox_detection_enabled": False,
         })
 
@@ -188,6 +190,7 @@ class QwenImageNunchakuLocalSettingsTests(unittest.TestCase):
         self.assertTrue(settings.low_vram_use_pin_memory)
         self.assertEqual(settings.low_vram_num_blocks_on_gpu, 2)
         self.assertEqual(settings.seed, 5)
+        self.assertEqual(settings.thumbnail_negative_prompt, "blurry, YouTube logo")
         self.assertEqual(settings.prompt_suffix, "Ultra HD, 4K.")
         self.assertEqual(settings.fallback_provider, "bfl")
         self.assertFalse(settings.letterbox_detection_enabled)

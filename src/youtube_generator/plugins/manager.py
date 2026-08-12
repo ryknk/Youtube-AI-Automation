@@ -1,5 +1,6 @@
 """設定に基づき生成プロバイダーを組み立てるファクトリ。"""
 
+import dataclasses
 from typing import Any
 
 from youtube_generator.config import Settings
@@ -175,6 +176,10 @@ class PluginManager:
         if not isinstance(nunchaku_settings_raw, dict):
             raise ValueError("config.yaml の image.qwen_image_nunchaku_local 設定が不正です。")
         nunchaku_settings = QwenImageNunchakuLocalSettings.from_mapping(nunchaku_settings_raw)
+        if size_setting == "thumbnail_size" and nunchaku_settings.thumbnail_negative_prompt is not None:
+            nunchaku_settings = dataclasses.replace(
+                nunchaku_settings, negative_prompt=nunchaku_settings.thumbnail_negative_prompt,
+            )
         primary: ImageProvider = QwenImageNunchakuLocalImageProvider(
             nunchaku_settings, str(image_settings[size_setting]),
             resize_to_output_size=(size_setting != "scene_size"),

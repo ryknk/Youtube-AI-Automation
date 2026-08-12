@@ -324,6 +324,53 @@ class PluginManagerTests(unittest.TestCase):
 
         self.assertTrue(provider_class.call_args.kwargs["resize_to_output_size"])
 
+    @patch("youtube_generator.plugins.manager.QwenImageNunchakuLocalImageProvider")
+    def test_qwen_image_nunchaku_local_thumbnail_uses_thumbnail_negative_prompt(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(), {"image": "qwen_image_nunchaku_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080", "thumbnail_size": "1280x720",
+            "qwen_image_nunchaku_local": {
+                "negative_prompt": "blurry", "thumbnail_negative_prompt": "blurry, YouTube logo",
+            },
+        }
+
+        manager.create_image_provider(
+            image_settings, RetryPolicy(max_attempts=1), size_setting="thumbnail_size",
+        )
+
+        args = provider_class.call_args.args
+        self.assertEqual(args[0].negative_prompt, "blurry, YouTube logo")
+
+    @patch("youtube_generator.plugins.manager.QwenImageNunchakuLocalImageProvider")
+    def test_qwen_image_nunchaku_local_scene_ignores_thumbnail_negative_prompt(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(), {"image": "qwen_image_nunchaku_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080", "thumbnail_size": "1280x720",
+            "qwen_image_nunchaku_local": {
+                "negative_prompt": "blurry", "thumbnail_negative_prompt": "blurry, YouTube logo",
+            },
+        }
+
+        manager.create_image_provider(image_settings, RetryPolicy(max_attempts=1))
+
+        args = provider_class.call_args.args
+        self.assertEqual(args[0].negative_prompt, "blurry")
+
+    @patch("youtube_generator.plugins.manager.QwenImageNunchakuLocalImageProvider")
+    def test_qwen_image_nunchaku_local_thumbnail_without_override_keeps_shared_negative_prompt(self, provider_class) -> None:  # type: ignore[no-untyped-def]
+        manager = PluginManager(Settings(), {"image": "qwen_image_nunchaku_local"}, {})
+        image_settings = {
+            "scene_size": "1920x1080", "thumbnail_size": "1280x720",
+            "qwen_image_nunchaku_local": {"negative_prompt": "blurry"},
+        }
+
+        manager.create_image_provider(
+            image_settings, RetryPolicy(max_attempts=1), size_setting="thumbnail_size",
+        )
+
+        args = provider_class.call_args.args
+        self.assertEqual(args[0].negative_prompt, "blurry")
+
     @patch("youtube_generator.plugins.manager.BFLImageProvider")
     @patch("youtube_generator.plugins.manager.QwenImageNunchakuLocalImageProvider")
     def test_fallback_provider_wraps_qwen_image_nunchaku_local_primary_with_bfl(self, nunchaku_provider_class, bfl_provider_class) -> None:  # type: ignore[no-untyped-def]

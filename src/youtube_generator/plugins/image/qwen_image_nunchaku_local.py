@@ -77,6 +77,11 @@ class QwenImageNunchakuLocalSettings:
     height: int = 928
     seed: int | None = None
     negative_prompt: str = ""
+    # サムネイル生成時のみ使用するnegative_prompt。未設定（null）の場合はnegative_promptを
+    # そのまま共用する。サムネイルは「YouTube thumbnail」という文脈上、シーン画像より
+    # YouTubeロゴ・再生ボタンアイコンや文字が生成されやすい傾向があるため、
+    # negative_promptとは別に抑制語を調整できるようにしている。
+    thumbnail_negative_prompt: str | None = None
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定は空文字列（何も付加しない）。config.yamlのimage.qwen_image_nunchaku_local.prompt_suffixで
     # 指定する。例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
@@ -101,6 +106,7 @@ class QwenImageNunchakuLocalSettings:
             seed_value = values.get("seed")
             fallback_provider = values.get("fallback_provider")
             model_cache_dir = values.get("model_cache_dir")
+            thumbnail_negative_prompt = values.get("thumbnail_negative_prompt")
             return cls(
                 base_model_id=str(values.get("base_model_id", DEFAULT_BASE_MODEL_ID)),
                 transformer_repo_id=str(values.get("transformer_repo_id", DEFAULT_TRANSFORMER_REPO_ID)),
@@ -115,6 +121,9 @@ class QwenImageNunchakuLocalSettings:
                 height=int(values.get("height", 928)),
                 seed=int(seed_value) if seed_value is not None else None,
                 negative_prompt=str(values.get("negative_prompt", "")),
+                thumbnail_negative_prompt=(
+                    str(thumbnail_negative_prompt) if thumbnail_negative_prompt is not None else None
+                ),
                 prompt_suffix=str(values.get("prompt_suffix", "")),
                 model_cache_dir=str(model_cache_dir) if model_cache_dir else None,
                 fallback_provider=str(fallback_provider).lower() if fallback_provider else None,
