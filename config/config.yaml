@@ -304,10 +304,10 @@ image:
     # negative_prompt側で直接抑制する。
     negative_prompt: "watermark, logo, YouTube logo, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, video player interface, UI elements, screenshot, anime screenshot, episode preview card, title card, broadcast slate, next episode preview, aspect ratio label, picture frame, framed photo, border, wall-mounted display, television screen, letterbox, pillarbox, black bars, cinemascope bars, film strip border, multiple locations in one image, two different places combined, composite scene, chyron, lower third, news ticker, breaking news banner, under-eye lines, tear trough, dark circles, facial creases, skin wrinkles, facial blemishes"
     # サムネイル生成時のみ使用するnegative_prompt。nullの場合はnegative_promptをそのまま共用する。
-    # サムネイルは「YouTube thumbnail」という文脈上、シーン画像よりYouTubeロゴ・再生ボタン
-    # アイコンや文字が写り込みやすい傾向を確認したため、共通negative_promptに加えて
-    # YouTube UI要素の抑制語を追加している。
-    thumbnail_negative_prompt: "watermark, logo, YouTube logo, YouTube play button, red play button icon, YouTube app icon, YouTube interface, subscribe button icon, notification bell icon, video platform UI, video player interface, UI elements, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, screenshot, picture frame, framed photo, border, letterbox, pillarbox, black bars, under-eye lines, tear trough, dark circles, facial creases, skin wrinkles, facial blemishes"
+    # サムネイルはシーン画像と異なりnarration文脈がなく、テキストやロゴ・額縁的な構図が
+    # 混入しやすいため、共通negative_promptからシーン画像固有の語（anime screenshot等）を
+    # 除いたサムネイル向けの内容にしている。
+    thumbnail_negative_prompt: "watermark, logo, brand logo, real-world brand logos, recognizable trademarks, corporate branding, product branding, Apple logo, Windows logo, Microsoft logo, Google logo, Samsung logo, Sony logo, Nike logo, video player interface, UI elements, text overlay, on-screen text, subtitle, caption, written words, letters, text characters, glyphs, symbols, numbers, calligraphy, handwriting, any language script, screenshot, picture frame, framed photo, border, letterbox, pillarbox, black bars, under-eye lines, tear trough, dark circles, facial creases, skin wrinkles, facial blemishes"
     # 任意のプロンプト追記文字列。プロンプト末尾に ", <prompt_suffix>" として付加される。
     # 既定（未指定時）は空文字列（何も付加しない）。
     # 例: Qwen-Image公式ドキュメント推奨の品質向上用決まり文句や、画面内への意図しない
@@ -321,7 +321,7 @@ image:
     # 生成画像の上下端に黒帯（レターボックス）を検出した場合、別seedで自動再生成するか。
     # falseにすると検出・再生成を行わず常に1回のみ生成する（seedを固定している場合は
     # 再生成しても同じ画像になるため、trueでも検出時は警告ログのみで再生成しない）。
-    letterbox_detection_enabled: false
+    letterbox_detection_enabled: true
 
 # 台本のシーン分割設定
 scenes:
