@@ -1,5 +1,6 @@
 """シーン本文から統一感のある画像生成プロンプトを組み立てる。"""
 
+import random
 import re
 
 # セリフを示す引用記号。FLUXは引用符付き文言を画面内テキストとして描画する
@@ -9,6 +10,30 @@ import re
 _QUOTE_MARKERS = re.compile("[「」『』“”‘’\"']")
 # plugin_manager.image_provider_name()が返す値のうち、FLUXモデルを使用するプロバイダー。
 _FLUX_PROVIDER_NAMES = frozenset({"bfl", "flux_schnell_local"})
+
+# 同一画像内に同性の人物が複数登場した際、全員が似た髪型で生成される問題への対策。
+# 「差別化して」という抽象的な指示より、具体的な髪型を人物順に直接割り当てる方が
+# 画像生成モデルに伝わりやすいため、build()の呼び出しごとにここからランダムに
+# 抽出して割り当てる（毎回同じ組み合わせだと、その組み合わせ自体をモデルが学習・
+# 固定化するリスクがあるため）。
+_FEMALE_HAIRSTYLES = (
+    "a short bob",
+    "long straight hair",
+    "hair tied in a ponytail",
+    "hair tied in a bun",
+    "wavy shoulder-length hair",
+    "hair with side-swept bangs",
+)
+_MALE_HAIRSTYLES = (
+    "a short crew cut",
+    "neatly combed short hair",
+    "textured medium-length hair",
+    "a side-parted hairstyle",
+    "slightly tousled short hair",
+    "a buzz cut",
+)
+# 1画像内で同性の人物が同時に映る現実的な人数を想定した割り当て数。
+_HAIRSTYLE_ASSIGNMENT_COUNT = 3
 
 
 class ImagePromptBuilder:
@@ -25,6 +50,12 @@ class ImagePromptBuilder:
             raise ValueError("画像化するシーン本文が空です。")
         narration_text = (
             _QUOTE_MARKERS.sub("", cleaned_text) if self._strip_quote_markers else cleaned_text
+        )
+        female_hairstyles = ", then ".join(
+            random.sample(_FEMALE_HAIRSTYLES, _HAIRSTYLE_ASSIGNMENT_COUNT)
+        )
+        male_hairstyles = ", then ".join(
+            random.sample(_MALE_HAIRSTYLES, _HAIRSTYLE_ASSIGNMENT_COUNT)
         )
         return (
             "Use case: a single wide illustration used as narrated video background art.\n"
@@ -45,10 +76,13 @@ class ImagePromptBuilder:
             "and attire; female: feminine build, facial structure, and attire) matching the gender "
             "implied by the narration, so male and female characters are visually unambiguous. This "
             "video is for a Japanese audience, so depict every person with Japanese ethnicity facial "
-            "features, hairstyles, and attire appropriate to the scene. When multiple people of the "
-            "same gender appear together, give each one a distinct hairstyle (differing in length, "
-            "shape, or style) so they remain visually distinguishable from one another rather than "
-            "looking like duplicates.\n"
+            "features, hairstyles, and attire appropriate to the scene. If multiple women appear "
+            f"together in the same image, give them different hairstyles in this exact order as "
+            f"they appear (e.g. left to right): {female_hairstyles}. If multiple men appear "
+            f"together in the same image, give them different hairstyles in this exact order as "
+            f"they appear: {male_hairstyles}. For any additional people of the same gender beyond "
+            "this list, keep varying hair length and style so none of them duplicate each other or "
+            "the people already listed.\n"
             "Character interaction: convey the characters' emotional state and relationship purely "
             "through facial expression, gaze, posture, and body language.\n"
             "Text/writing: whenever any surface would naturally display writing, render that content "
