@@ -98,8 +98,22 @@ class ImagePromptBuilderTests(unittest.TestCase):
         prompt = builder.build("シーン本文")
 
         self.assertIn(
-            "For any additional people of the same gender beyond this list, keep varying hair "
-            "length and style so none of them duplicate each other or the people already listed.",
+            "For any additional people of the same gender beyond the list for their gender, keep "
+            "varying hair length and style so none of them duplicate each other or the people "
+            "already listed.",
+            prompt,
+        )
+
+    def test_build_includes_cross_gender_hairstyle_guard(self) -> None:
+        """男性用髪型が女性へ、女性用髪型が男性へ誤って適用されることを防ぐ明示的な
+        禁止指示が含まれること。"""
+        builder = ImagePromptBuilder("style")
+
+        prompt = builder.build("シーン本文")
+
+        self.assertIn(
+            "Never give a female character a male hairstyle, and never give a male character a "
+            "female hairstyle.",
             prompt,
         )
 
