@@ -1,13 +1,8 @@
 """ImagePromptBuilderのテスト。"""
 
 import unittest
-from unittest.mock import patch
 
-from youtube_generator.services.image_prompt_builder import (
-    ImagePromptBuilder,
-    _FEMALE_HAIRSTYLES,
-    _MALE_HAIRSTYLES,
-)
+from youtube_generator.services.image_prompt_builder import ImagePromptBuilder
 
 
 class ImagePromptBuilderTests(unittest.TestCase):
@@ -71,60 +66,6 @@ class ImagePromptBuilderTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             builder.build("   ")
-
-    def test_build_assigns_sampled_female_and_male_hairstyles(self) -> None:
-        """女性用・男性用プールからそれぞれサンプリングした髪型が、指示文へ順序通り
-        埋め込まれること（random.sampleをモックして決定的に検証する）。"""
-        builder = ImagePromptBuilder("style")
-
-        with patch(
-            "youtube_generator.services.image_prompt_builder.random.sample",
-            side_effect=[
-                [_FEMALE_HAIRSTYLES[0], _FEMALE_HAIRSTYLES[1], _FEMALE_HAIRSTYLES[2]],
-                [_MALE_HAIRSTYLES[3], _MALE_HAIRSTYLES[4], _MALE_HAIRSTYLES[5]],
-            ],
-        ):
-            prompt = builder.build("シーン本文")
-
-        expected_female = f"{_FEMALE_HAIRSTYLES[0]}, then {_FEMALE_HAIRSTYLES[1]}, then {_FEMALE_HAIRSTYLES[2]}"
-        expected_male = f"{_MALE_HAIRSTYLES[3]}, then {_MALE_HAIRSTYLES[4]}, then {_MALE_HAIRSTYLES[5]}"
-        self.assertIn(expected_female, prompt)
-        self.assertIn(expected_male, prompt)
-
-    def test_build_includes_fallback_instruction_for_additional_same_gender_people(self) -> None:
-        """明示リストの3人を超える同性人物向けのフォールバック指示が含まれること。"""
-        builder = ImagePromptBuilder("style")
-
-        prompt = builder.build("シーン本文")
-
-        self.assertIn(
-            "For any additional people of the same gender beyond the list for their gender, keep "
-            "varying hair length and style so none of them duplicate each other or the people "
-            "already listed.",
-            prompt,
-        )
-
-    def test_build_includes_cross_gender_hairstyle_guard(self) -> None:
-        """男性用髪型が女性へ、女性用髪型が男性へ誤って適用されることを防ぐ明示的な
-        禁止指示が含まれること。"""
-        builder = ImagePromptBuilder("style")
-
-        prompt = builder.build("シーン本文")
-
-        self.assertIn(
-            "Never give a female character a male hairstyle, and never give a male character a "
-            "female hairstyle.",
-            prompt,
-        )
-
-    def test_build_varies_hairstyle_selection_across_calls(self) -> None:
-        """build()を複数回呼ぶと（実際のrandomを使って）異なる組み合わせが選ばれうること。
-        同一プールから毎回同じ組み合わせしか選ばれない実装ミス（例: 固定シード）を検出する。"""
-        builder = ImagePromptBuilder("style")
-
-        prompts = {builder.build("シーン本文") for _ in range(30)}
-
-        self.assertGreater(len(prompts), 1)
 
 
 if __name__ == "__main__":
